@@ -6,6 +6,14 @@ package com.metrolist.music.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.metrolist.music.utils.rememberPreference
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,6 +93,44 @@ private fun Song.toCard() =
 private fun SongItem.toCard() =
     CardData(id, title, artists.joinToString(", ") { it.name }, thumbnail)
 
+// ---- Categorias e temas ocultos (tudo em memória, sem rede) ----
+
+private val HiddenTopicsKey = stringPreferencesKey("leveHiddenTopics")
+
+private enum class HomeCategory(val label: String, val keywords: List<String>) {
+    ALL("Tudo", emptyList()),
+    MUSIC("Música", emptyList()),
+    ASMR("ASMR", listOf("asmr", "tingle", "whisper", "sussurr", "mouth sounds", "tapping")),
+    SLEEP("Dormir e relaxar", listOf("sleep", "dormir", "relax", "rain", "chuva", "lofi", "lo-fi", "medita", "white noise", "ruído", "ambient", "calm", "432hz", "binaural")),
+    PODCAST("Podcasts", listOf("podcast", "entrevista", "cortes", "episódio", "episode")),
+    GAMES("Games", listOf("gameplay", "minecraft", "free fire", "gta", "fortnite", "roblox", "speedrun", "jogando", "detonado")),
+    FUNK("Funk", listOf("funk", "mc ", "mtg", "brega", "bregadeira")),
+    RAP("Rap e Trap", listOf("rap", "trap", "drill", "freestyle", "boom bap")),
+    GOSPEL("Gospel", listOf("gospel", "louvor", "worship", "hino", "adoração")),
+    BRASIL("Sertanejo e pagode", listOf("sertanejo", "modão", "pagode", "forró", "piseiro", "arrocha", "samba")),
+    ROCK("Rock", listOf("rock", "metal", "punk", "grunge", "hardcore")),
+    ELETRONICA("Eletrônica", listOf("remix", "house", "techno", "edm", "phonk", "slowed", "sped up", "eletrônica")),
+}
+
+private val NonMusicCategories = listOf(HomeCategory.ASMR, HomeCategory.SLEEP, HomeCategory.PODCAST, HomeCategory.GAMES)
+
+private fun textMatches(text: String, keyword: String): Boolean {
+    if (keyword.contains(' ')) return text.contains(keyword)
+    // palavra que começa com a chave (evita "rap" casar com "terapia")
+    return text.split(Regex("[^\\p{L}\\p{N}]+")).any { it.startsWith(keyword) }
+}
+
+private fun HomeCategory.accepts(text: String): Boolean =
+    when (this) {
+        HomeCategory.ALL -> true
+        HomeCategory.MUSIC -> NonMusicCategories.none { cat -> cat.keywords.any { textMatches(text, it) } }
+        else -> keywords.any { textMatches(text, it) }
+    }
+
+private fun Song.searchText() = (title + " " + artists.joinToString(" ") { it.name }).lowercase()
+
+private fun SongItem.searchText() = (title + " " + artists.joinToString(" ") { it.name }).lowercase()
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LeveHomeScreen(
@@ -139,13 +185,73 @@ fun LeveHomeScreen(
         playerConnection.playQueue(ListQueue(title = title, items = songs.shuffled().map { it.toMediaItem() }))
     }
 
-    val recent = recentSongs.orEmpty()
-    val liked = likedSongs.orEmpty()
-    val forYou = madeForYou.orEmpty()
-    val bySearch = searchSections.orEmpty()
+    var hiddenRaw by rememberPreference(HiddenTopicsKey, "")
+    val hiddenTopics = remember(hiddenRaw) { hiddenRaw.split("\n").map { it.trim().lowercase() }.filter { it.isNotEmpty() } }
+    var categoryName by rememberSaveable { mutableStateOf(HomeCategory.ALL.name) }
+    val category = HomeCategory.valueOf(categoryName)
+    var showHideDialog by remember { mutableStateOf(false) }
+
+    fun hideTopic(topic: String) {
+        val t = topic.trim().lowercase()
+        if (t.isNotEmpty() && t !in hiddenTopics) hiddenRaw = (hiddenTopics + t).joinToString("\n")
+    }
+
+    fun unhideTopic(topic: String) {
+        hiddenRaw = hiddenTopics.filterNot { it == topic }.joinToString("\n")
+    }
+
+    fun isHidden(text: String) = hiddenTopics.any { text.contains(it) }
+    fun keep(text: String) = !isHidden(text) && category.accepts(text)
+
+    val recent = recentSongs.orEmpty().filter { keep(it.searchText()) }
+    val liked = likedSongs.orEmpty().filter { keep(it.searchText()) }
+    val forYou = madeForYou.orEmpty().filter { keep(it.searchText()) }
+    val bySearch =
+        searchSections.orEmpty()
+            .filterNot { isHidden(it.query.lowercase()) }
+            .mapNotNull { section ->
+                val queryFits = category != HomeCategory.MUSIC && category != HomeCategory.ALL && category.accepts(section.query.lowercase())
+                val songs = section.songs.filter { s ->
+                    val text = s.searchText()
+                    !isHidden(text) && (queryFits || category.accepts(text))
+                }
+                if (songs.isEmpty()) null else section.copy(songs = songs)
+            }
+    val visibleMixes =
+        mixes.orEmpty()
+            .filterNot { isHidden(it.title.lowercase()) || isHidden(it.seed.searchText()) }
+            .filter { mix -> category.accepts(mix.seed.searchText()) || mix.songs.count { category.accepts(it.searchText()) } >= mix.songs.size / 2 }
     val everythingEmpty =
-        recentSongs != null && likedSongs != null && searchSections != null &&
+        category == HomeCategory.ALL && hiddenTopics.isEmpty() && recentSongs != null && likedSongs != null && searchSections != null &&
             recent.isEmpty() && liked.isEmpty() && forYou.isEmpty() && bySearch.isEmpty()
+
+    if (showHideDialog) {
+        var draft by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showHideDialog = false },
+            title = { Text("Ocultar tema") },
+            text = {
+                Column {
+                    Text(
+                        "Digite uma palavra (ex: asmr). Tudo que tiver ela no nome some do Início.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(value = draft, onValueChange = { draft = it }, singleLine = true)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    hideTopic(draft)
+                    showHideDialog = false
+                }) { Text("Ocultar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHideDialog = false }) { Text("Cancelar") }
+            },
+        )
+    }
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -164,6 +270,31 @@ fun LeveHomeScreen(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
                 )
+            }
+
+            // Categorias: deslize pro lado
+            item(key = "categories") {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                ) {
+                    HomeCategory.entries.forEach { cat ->
+                        val selected = cat == category
+                        Text(
+                            text = cat.label,
+                            fontSize = 13.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(if (selected) SpotifyGreen else MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .combinedClickable(onClick = { categoryName = cat.name })
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                        )
+                    }
+                }
             }
 
             // Atalhos rápidos (2 colunas), igual ao topo do Spotify
@@ -228,10 +359,11 @@ fun LeveHomeScreen(
                 }
             }
 
-            mixes?.takeIf { it.isNotEmpty() }?.let { mixList ->
+            visibleMixes.takeIf { it.isNotEmpty() }?.let { mixList ->
                 item(key = "mixes") {
                     MixRow(
                         mixes = mixList,
+                        onHide = { mix -> hideTopic(mix.seed.artists.firstOrNull()?.name ?: mix.seed.title) },
                         onPlay = { mix ->
                             playerConnection.playQueue(
                                 ListQueue(
@@ -311,6 +443,7 @@ fun LeveHomeScreen(
                                 ListQueue(title = section.query, items = section.songs.shuffled().map { it.toMediaItem() }),
                             )
                         },
+                        onHide = { hideTopic(section.query) },
                         onClick = { index -> playOnline(section.query, section.songs, index) },
                         onLongClick = { index ->
                             menuState.show { YouTubeSongMenu(song = section.songs[index], onDismiss = menuState::dismiss) }
@@ -348,6 +481,46 @@ fun LeveHomeScreen(
                             menuState.show { SongMenu(originalSong = recent[index], onDismiss = menuState::dismiss) }
                         },
                     )
+                }
+            }
+
+            item(key = "hidden_topics") {
+                Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 32.dp)) {
+                    Text("Temas ocultos", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text(
+                        "Não aparecem no Início (continuam na busca). Toque num tema pra mostrar de novo.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    ) {
+                        Text(
+                            text = "+ Ocultar tema",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(SpotifyGreen)
+                                .clickable { showHideDialog = true }
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                        )
+                        hiddenTopics.forEach { topic ->
+                            Text(
+                                text = "$topic  ✕",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .clickable { unhideTopic(topic) }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                            )
+                        }
+                    }
                 }
             }
 
@@ -421,6 +594,7 @@ private fun CardRow(
     onShuffle: () -> Unit,
     onClick: (Int) -> Unit,
     onLongClick: (Int) -> Unit,
+    onHide: (() -> Unit)? = null,
 ) {
     Column(modifier = Modifier.padding(top = 24.dp)) {
         Row(
@@ -452,6 +626,17 @@ private fun CardRow(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
+            }
+            if (onHide != null) {
+                Text(
+                    text = "Ocultar",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable(onClick = onHide)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                )
             }
             IconButton(
                 onClick = onShuffle,
@@ -511,6 +696,7 @@ private fun CardRow(
 @Composable
 private fun MixRow(
     mixes: List<com.metrolist.music.viewmodels.LeveMix>,
+    onHide: (com.metrolist.music.viewmodels.LeveMix) -> Unit,
     onPlay: (com.metrolist.music.viewmodels.LeveMix) -> Unit,
     onShuffle: (com.metrolist.music.viewmodels.LeveMix) -> Unit,
 ) {
@@ -596,6 +782,15 @@ private fun MixRow(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "Ocultar",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .combinedClickable(onClick = { onHide(mix) })
+                            .padding(vertical = 4.dp),
                     )
                 }
             }
