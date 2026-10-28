@@ -84,6 +84,7 @@ import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.mkv.MatroskaExtractor
 import androidx.media3.extractor.mp4.FragmentedMp4Extractor
 import androidx.media3.extractor.mp4.Mp4Extractor
+import com.metrolist.music.utils.LocalMusic
 import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaController
@@ -2542,6 +2543,10 @@ class MusicService :
             }
         }
         lastTransitionedMediaId = mediaItem?.mediaId
+        // Leve Music: músicas do celular entram no histórico/biblioteca como as outras
+        mediaItem?.takeIf { LocalMusic.isLocalId(it.mediaId) }?.metadata?.let { localMetadata ->
+            database.query { insert(localMetadata) }
+        }
         initialBufferRecoveryJob?.cancel()
         initialBufferRecoveryJob = null
         initialBufferRecoveryAttemptedMediaId = null
@@ -3989,9 +3994,20 @@ class MusicService :
         playerProvider: () -> ExoPlayer?,
     ) =
         DefaultMediaSourceFactory(
-            createDataSourceFactory(normalizationProcessor, playerProvider),
+            LocalAwareDataSourceFactory(this, createDataSourceFactory(normalizationProcessor, playerProvider)),
             ExtractorsFactory {
-                arrayOf(MatroskaExtractor(), FragmentedMp4Extractor(), Mp4Extractor())
+                arrayOf(
+                    MatroskaExtractor(),
+                    FragmentedMp4Extractor(),
+                    Mp4Extractor(),
+                    // Leve Music: formatos comuns de arquivos do celular
+                    androidx.media3.extractor.mp3.Mp3Extractor(),
+                    androidx.media3.extractor.flac.FlacExtractor(),
+                    androidx.media3.extractor.ogg.OggExtractor(),
+                    androidx.media3.extractor.wav.WavExtractor(),
+                    androidx.media3.extractor.ts.AdtsExtractor(),
+                    androidx.media3.extractor.amr.AmrExtractor(),
+                )
             },
         )
 

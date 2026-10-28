@@ -775,6 +775,7 @@ class MainActivity : FragmentActivity() {
                         listOf(
                             Screens.Home.route,
                             Screens.Library.route,
+                            Screens.Device.route,
                             Screens.ListenTogether.route,
                             "settings",
                         )
@@ -1016,6 +1017,7 @@ class MainActivity : FragmentActivity() {
                             Screens.Home.route -> R.string.home
                             Screens.Search.route -> R.string.search
                             Screens.Library.route -> R.string.filter_library
+                            Screens.Device.route -> R.string.leve_device_music
                             Screens.ListenTogether.route -> R.string.together
                             else -> null
                         }

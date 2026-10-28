@@ -29,7 +29,7 @@ fun MediaMetadata.toMediaItem(): MediaItem {
     val artistNames = resolvedMetadata.artists.joinToString { it.name }
     return MediaItem.Builder()
         .setMediaId(resolvedMetadata.id)
-        .setUri(resolvedMetadata.id)
+        .setUri(com.metrolist.music.utils.LocalMusic.playbackUri(resolvedMetadata.id))
         .setCustomCacheKey(resolvedMetadata.id)
         .setTag(resolvedMetadata)
         .setMediaMetadata(
