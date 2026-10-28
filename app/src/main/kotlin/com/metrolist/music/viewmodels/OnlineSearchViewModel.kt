@@ -25,6 +25,7 @@ import com.metrolist.music.constants.HideVideoSongsKey
 import com.metrolist.music.constants.HideYoutubeShortsKey
 import com.metrolist.music.constants.PauseSearchHistoryKey
 import com.metrolist.music.models.ItemsPage
+import com.metrolist.music.utils.LeveYouTubeSearch
 import com.metrolist.music.utils.SearchRoutes
 import com.metrolist.music.utils.dataStore
 import com.metrolist.music.utils.get
@@ -120,6 +121,16 @@ constructor(
             filter.collect { filter ->
                 if (filter == null) {
                     loadSummaryPage()
+                } else if (filter == LeveYouTubeSearch.FILTER_ALL_YOUTUBE) {
+                    if (viewStateMap[filter.value] == null) {
+                        LeveYouTubeSearch.search(query)
+                            .onSuccess { page ->
+                                viewStateMap[filter.value] = ItemsPage(page.items, page.continuation)
+                            }.onFailure {
+                                reportException(it)
+                                viewStateMap[filter.value] = ItemsPage(emptyList(), null)
+                            }
+                    }
                 } else if (filter == YouTube.SearchFilter.FILTER_EPISODE) {
                     // The FILTER_EPISODE API returns episodes in a format that differs from the
                     // summary search: playlistItemData is absent and the subtitle structure is
@@ -170,6 +181,14 @@ constructor(
         viewModelScope.launch {
             val viewState = viewStateMap[filterValue] ?: return@launch
             val continuation = viewState.continuation ?: return@launch
+            if (currentFilter == LeveYouTubeSearch.FILTER_ALL_YOUTUBE) {
+                val page = LeveYouTubeSearch.continuation(continuation).getOrNull() ?: return@launch
+                viewStateMap[filterValue] = ItemsPage(
+                    (viewState.items + page.items).distinctBy { it.id },
+                    page.continuation,
+                )
+                return@launch
+            }
             val searchResult =
                 YouTube.searchContinuation(
                     continuation,

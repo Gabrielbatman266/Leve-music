@@ -37,7 +37,10 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,7 +85,7 @@ private fun Song.toCard() =
 private fun SongItem.toCard() =
     CardData(id, title, artists.joinToString(", ") { it.name }, thumbnail)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LeveHomeScreen(
     viewModel: LeveHomeViewModel = hiltViewModel(),
@@ -101,6 +104,7 @@ fun LeveHomeScreen(
     LaunchedEffect(Unit) { viewModel.load() }
 
     val currentId = mediaMetadata?.id
+    var showAllTiles by rememberSaveable { mutableStateOf(false) }
     val greeting = remember {
         when (LocalTime.now().hour) {
             in 5..11 -> "Bom dia"
@@ -163,7 +167,9 @@ fun LeveHomeScreen(
 
             // Atalhos rápidos (2 colunas), igual ao topo do Spotify
             item(key = "tiles") {
-                val tiles = recent.take(if (liked.isNotEmpty()) 5 else 6)
+                // Suas músicas: tudo que você ouve fica salvo aqui (8 visíveis, "Mostrar mais" abre o resto)
+                val visibleCount = if (showAllTiles) recent.size else (if (liked.isNotEmpty()) 7 else 8)
+                val tiles = recent.take(visibleCount)
                 // null = bloco "Músicas curtidas"; índice >= 0 = música recente
                 val cells: List<Int?> =
                     (if (liked.isNotEmpty()) listOf<Int?>(null) else emptyList()) + tiles.indices.map { it }
@@ -202,6 +208,22 @@ fun LeveHomeScreen(
                             if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
                         }
                     }
+                }
+            }
+
+            if (recent.size > (if (liked.isNotEmpty()) 7 else 8)) {
+                item(key = "tiles_more") {
+                    Text(
+                        text = if (showAllTiles) "Mostrar menos" else "Mostrar mais (${recent.size})",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(50))
+                            .combinedClickable(onClick = { showAllTiles = !showAllTiles })
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
                 }
             }
 
@@ -288,7 +310,7 @@ fun LeveHomeScreen(
                 }
             }
 
-            if (recent.size > 6) {
+            if (false) {
                 item(key = "recent") {
                     CardRow(
                         title = "Tocadas recentemente",

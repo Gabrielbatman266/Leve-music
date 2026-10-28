@@ -220,7 +220,7 @@ fun PlayerSettings(
     )
     val (historyDuration, onHistoryDurationChange) = rememberPreference(
         HistoryDuration,
-        defaultValue = 30f
+        defaultValue = 10f
     )
 
     var showAudioQualityDialog by remember {

@@ -457,6 +457,7 @@ fun OnlineSearchResult(
                     listOf(
                         null to stringResource(R.string.filter_all),
                         FILTER_SONG to stringResource(R.string.filter_songs),
+                        com.metrolist.music.utils.LeveYouTubeSearch.FILTER_ALL_YOUTUBE to "Todo o YouTube",
                     ).let { baseChips ->
                         if (!hideVideoSongs) {
                             baseChips + (FILTER_VIDEO to stringResource(R.string.filter_videos))

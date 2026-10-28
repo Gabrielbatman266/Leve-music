@@ -10,6 +10,7 @@ import com.metrolist.innertube.YouTube
 import com.metrolist.innertube.models.SongItem
 import com.metrolist.music.db.MusicDatabase
 import com.metrolist.music.db.entities.Song
+import com.metrolist.music.utils.LeveYouTubeSearch
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -35,7 +36,7 @@ class LeveHomeViewModel @Inject constructor(
 
     // Tudo que vem do banco local é reativo e barato (sem rede).
     val recentSongs: StateFlow<List<Song>?> =
-        database.recentlyPlayedSongs(30)
+        database.recentlyPlayedSongs(60)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val likedSongs = MutableStateFlow<List<Song>?>(null)
@@ -86,13 +87,19 @@ class LeveHomeViewModel @Inject constructor(
         val sections = coroutineScope {
             queries.map { query ->
                 async {
-                    val songs = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
+                    val musicSongs = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
                         .getOrNull()
                         ?.items
                         ?.filterIsInstance<SongItem>()
-                        ?.distinctBy { it.id }
-                        ?.take(12)
                         .orEmpty()
+                    // Se a busca não for de música (ou trouxer pouco), completa com vídeos do YouTube
+                    val videos =
+                        if (musicSongs.size < 6) {
+                            LeveYouTubeSearch.search(query).getOrNull()?.items.orEmpty()
+                        } else {
+                            emptyList()
+                        }
+                    val songs = (musicSongs + videos).distinctBy { it.id }.take(12)
                     if (songs.isEmpty()) null else SearchBasedSection(query, songs)
                 }
             }.awaitAll().filterNotNull()

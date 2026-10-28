@@ -625,7 +625,7 @@ class MusicService :
         // This consolidates ~15 main-thread-blocking DataStore reads into 1.
         startupPrefs = runBlocking(Dispatchers.IO) { dataStore.data.first() }
         historyPaused = startupPrefs!![PauseListenHistoryKey] ?: false
-        historyDurationMs = ((startupPrefs!![HistoryDuration] ?: 30f) * 1000).toLong()
+        historyDurationMs = ((startupPrefs!![HistoryDuration] ?: 10f) * 1000).toLong()
 
         // 3. Connect the processor to the service
         // handled in createExoPlayer
@@ -943,7 +943,7 @@ class MusicService :
             }
 
         dataStore.data
-            .map { (it[PauseListenHistoryKey] ?: false) to ((it[HistoryDuration] ?: 30f) * 1000).toLong() }
+            .map { (it[PauseListenHistoryKey] ?: false) to ((it[HistoryDuration] ?: 10f) * 1000).toLong() }
             .distinctUntilChanged()
             .collectLatest(scope) { (paused, durationMs) ->
                 historyPaused = paused
@@ -4071,13 +4071,15 @@ class MusicService :
         playbackStats: PlaybackStats,
     ) {
         val mediaItem = eventTime.timeline.getWindow(eventTime.windowIndex, Timeline.Window()).mediaItem
-        val historyDurationMs = dataStore[HistoryDuration]?.times(1000f) ?: 30000f
+        val historyDurationMs = dataStore[HistoryDuration]?.times(1000f) ?: 10000f
 
         if (playbackStats.totalPlayTimeMs >= historyDurationMs &&
             !dataStore.get(PauseListenHistoryKey, false)
         ) {
             database.query {
                 incrementTotalPlayTime(mediaItem.mediaId, playbackStats.totalPlayTimeMs)
+                // Leve Music: o que você ouve fica salvo na biblioteca automaticamente
+                addToLibraryIfMissing(mediaItem.mediaId, LocalDateTime.now())
                 try {
                     insert(
                         Event(

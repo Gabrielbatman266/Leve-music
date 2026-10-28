@@ -1526,6 +1526,9 @@ interface DatabaseDao {
     )
     fun recentlyPlayedSongs(limit: Int): Flow<List<Song>>
 
+    @Query("UPDATE song SET inLibrary = :now WHERE id = :songId AND inLibrary IS NULL")
+    fun addToLibraryIfMissing(songId: String, now: LocalDateTime)
+
     @Transaction
     @Query("DELETE FROM search_history")
     fun clearSearchHistory()
