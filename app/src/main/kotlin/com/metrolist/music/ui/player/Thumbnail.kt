@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -246,6 +247,15 @@ fun Thumbnail(
     val mediaItems = mediaItemsData.items
     val currentMediaIndex = mediaItemsData.currentIndex
 
+    LaunchedEffect(mediaItems) {
+        val loader = coil3.SingletonImageLoader.get(context)
+        mediaItems.forEach { item ->
+            item.mediaMetadata.artworkUri?.let { uri ->
+                loader.enqueue(ImageRequest.Builder(context).data(uri.toString()).build())
+            }
+        }
+    }
+
     // Snap behavior - created once per grid state
     val thumbnailSnapLayoutInfoProvider = remember(thumbnailLazyGridState) {
         ThumbnailSnapLayoutInfoProvider(
@@ -299,7 +309,7 @@ fun Thumbnail(
         modifier = modifier
             .graphicsLayer {
                 // Use hardware layer for entire Thumbnail to ensure smooth 120Hz animations
-                compositingStrategy = CompositingStrategy.Offscreen
+                compositingStrategy = CompositingStrategy.Auto
             }
     ) {
         // Error view
@@ -384,12 +394,14 @@ fun Thumbnail(
                             Modifier.fillMaxSize()
                         }
                     ) {
-                        items(
+                        itemsIndexed(
                             items = mediaItems,
-                            key = { item -> 
-                                item.mediaId.ifEmpty { "unknown_${item.hashCode()}" }
+                            key = { index, item ->
+                                val base = item.mediaId.ifEmpty { "unknown_$index" }
+                                val firstIndex = mediaItems.indexOfFirst { it.mediaId == item.mediaId }
+                                if (firstIndex == index) base else "${base}_dup$index"
                             }
-                        ) { item ->
+                        ) { _, item ->
                             ThumbnailItem(
                                 item = item,
                                 dimensions = dimensions,
@@ -521,7 +533,7 @@ private fun ThumbnailItem(
             .padding(horizontal = PlayerHorizontalPadding)
             .graphicsLayer {
                 // Render entire thumbnail item on separate hardware layer for smooth animations
-                compositingStrategy = CompositingStrategy.Offscreen
+                compositingStrategy = CompositingStrategy.Auto
             }
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -624,7 +636,7 @@ private fun ThumbnailImage(
             .fillMaxSize()
             .graphicsLayer {
                 // Use offscreen compositing for hardware acceleration during animations
-                compositingStrategy = CompositingStrategy.Offscreen
+                compositingStrategy = CompositingStrategy.Auto
             }
             .background(MaterialTheme.colorScheme.surfaceVariant)
     ) {

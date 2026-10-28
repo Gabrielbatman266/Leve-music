@@ -963,7 +963,7 @@ fun Queue(
 
                     itemsIndexed(
                         items = automix,
-                        key = { _, it -> it.mediaId },
+                        key = { i, it -> "automix_${i}_${it.mediaId}" },
                     ) { index, item ->
                         Row(
                             horizontalArrangement = Arrangement.Center,
