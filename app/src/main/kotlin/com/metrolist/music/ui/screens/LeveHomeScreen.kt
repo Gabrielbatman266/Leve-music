@@ -99,6 +99,7 @@ fun LeveHomeScreen(
     val likedSongs by viewModel.likedSongs.collectAsStateWithLifecycle()
     val madeForYou by viewModel.madeForYou.collectAsStateWithLifecycle()
     val searchSections by viewModel.searchSections.collectAsStateWithLifecycle()
+    val mixes by viewModel.mixes.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.load() }
@@ -223,6 +224,30 @@ fun LeveHomeScreen(
                             .clip(RoundedCornerShape(50))
                             .combinedClickable(onClick = { showAllTiles = !showAllTiles })
                             .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
+
+            mixes?.takeIf { it.isNotEmpty() }?.let { mixList ->
+                item(key = "mixes") {
+                    MixRow(
+                        mixes = mixList,
+                        onPlay = { mix ->
+                            playerConnection.playQueue(
+                                ListQueue(
+                                    title = mix.title,
+                                    items = listOf(mix.seed.toMediaItem()) + mix.songs.map { it.toMediaItem() },
+                                ),
+                            )
+                        },
+                        onShuffle = { mix ->
+                            playerConnection.playQueue(
+                                ListQueue(
+                                    title = mix.title,
+                                    items = (listOf(mix.seed.toMediaItem()) + mix.songs.map { it.toMediaItem() }).shuffled(),
+                                ),
+                            )
+                        },
                     )
                 }
             }
@@ -473,6 +498,102 @@ private fun CardRow(
                         text = card.subtitle,
                         fontSize = 12.sp,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MixRow(
+    mixes: List<com.metrolist.music.viewmodels.LeveMix>,
+    onPlay: (com.metrolist.music.viewmodels.LeveMix) -> Unit,
+    onShuffle: (com.metrolist.music.viewmodels.LeveMix) -> Unit,
+) {
+    Column(modifier = Modifier.padding(top = 24.dp)) {
+        Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)) {
+            Text(
+                text = "Seus mixes",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Suas músicas + várias parecidas · segure pra aleatório",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            itemsIndexed(mixes, key = { _, mix -> "mix_${mix.seed.id}" }) { _, mix ->
+                Column(
+                    modifier = Modifier
+                        .width(150.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .combinedClickable(onClick = { onPlay(mix) }, onLongClick = { onShuffle(mix) }),
+                ) {
+                    Box(modifier = Modifier.size(150.dp)) {
+                        AsyncImage(
+                            model = mix.seed.thumbnailUrl?.resize(320, 320),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(150.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .background(SpotifyGreen),
+                        )
+                        Text(
+                            text = "MIX",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(6.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(SpotifyGreen)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                        Text(
+                            text = "${mix.songs.size + 1}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(bottom = 12.dp, end = 6.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0x99000000))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = mix.title,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = mix.subtitle,
+                        fontSize = 12.sp,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

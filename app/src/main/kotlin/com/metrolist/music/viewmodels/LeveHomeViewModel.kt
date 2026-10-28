@@ -11,6 +11,9 @@ import com.metrolist.innertube.models.SongItem
 import com.metrolist.music.db.MusicDatabase
 import com.metrolist.music.db.entities.Song
 import com.metrolist.music.utils.LeveYouTubeSearch
+import com.metrolist.music.utils.LocalMusic
+import com.metrolist.innertube.models.WatchEndpoint
+import java.time.LocalDateTime
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -23,6 +26,20 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+data class LeveMix(
+    val seed: Song,
+    val songs: List<SongItem>,
+) {
+    val title: String get() = "Mix " + (seed.artists.firstOrNull()?.name ?: seed.title)
+    val subtitle: String
+        get() {
+            val names = (seed.artists.map { it.name } + songs.flatMap { s -> s.artists.map { it.name } })
+                .distinct()
+                .take(3)
+            return names.joinToString(", ") + " e mais"
+        }
+}
 
 data class SearchBasedSection(
     val query: String,
@@ -42,6 +59,7 @@ class LeveHomeViewModel @Inject constructor(
     val likedSongs = MutableStateFlow<List<Song>?>(null)
     val madeForYou = MutableStateFlow<List<Song>?>(null)
     val searchSections = MutableStateFlow<List<SearchBasedSection>?>(null)
+    val mixes = MutableStateFlow<List<LeveMix>?>(null)
     val isRefreshing = MutableStateFlow(false)
 
     private var loaded = false
@@ -66,11 +84,44 @@ class LeveHomeViewModel @Inject constructor(
                             .take(20)
                     }
                     launch { loadSearchSections() }
+                    launch { loadMixes() }
                 }
             } finally {
                 isRefreshing.value = false
             }
         }
+    }
+
+    // Mixes: cada um começa com uma música que você já ouve e segue com parecidas (rádio do YouTube Music)
+    private suspend fun loadMixes() {
+        val seeds =
+            (
+                database.mostPlayedSongs(LocalDateTime.now().minusDays(30), limit = 15).first() +
+                    database.recentlyPlayedSongs(20).first()
+            ).filterNot { LocalMusic.isLocalId(it.id) }
+                .distinctBy { it.id }
+                .distinctBy { it.artists.firstOrNull()?.name ?: it.id }
+                .shuffled()
+                .take(5)
+        if (seeds.isEmpty()) {
+            mixes.value = emptyList()
+            return
+        }
+        mixes.value =
+            coroutineScope {
+                seeds.map { seed ->
+                    async {
+                        YouTube.next(WatchEndpoint(videoId = seed.id, playlistId = "RDAMVM${seed.id}"))
+                            .getOrNull()
+                            ?.items
+                            ?.filter { it.id != seed.id }
+                            ?.distinctBy { it.id }
+                            ?.take(30)
+                            ?.takeIf { it.size >= 5 }
+                            ?.let { LeveMix(seed, it) }
+                    }
+                }.awaitAll().filterNotNull()
+            }
     }
 
     // Poucas requisições: só as 3 últimas buscas, em paralelo.
