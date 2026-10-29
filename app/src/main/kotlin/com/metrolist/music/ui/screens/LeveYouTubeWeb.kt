@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +46,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -127,15 +129,17 @@ private val documentStartScript =
     """.trimIndent()
 
 /** Roda com o site carregado: CSS de limpeza, pular anúncio, SponsorBlock, velocidade, repetir. */
-private fun pageScript(speed: Float, sponsor: Boolean) =
+private fun pageScript(speed: Float, sponsor: Boolean, amoled: Boolean, hideShorts: Boolean) =
     """
     (function(){
       window.__leveSpeed = $speed; window.__leveSB = $sponsor;
+      var t = document.getElementById('leve-theme');
+      if (!t) { t = document.createElement('style'); t.id = 'leve-theme'; (document.head || document.documentElement).appendChild(t); }
+      t.textContent = ($amoled ? 'html,body,ytm-app,#app,ytm-mobile-topbar-renderer,.mobile-topbar-header,ytm-pivot-bar-renderer,ytm-browse,ytm-watch,ytm-single-column-watch-next-results-renderer,ytm-item-section-renderer,.page-container,ytm-engagement-panel{background:#000!important;background-color:#000!important}' : '') +
+        ($hideShorts ? 'ytm-reel-shelf-renderer,ytm-shorts-lockup-view-model,ytm-shorts-lockup-view-model-v2,ytm-pivot-bar-item-renderer:has(a[href^="/shorts"]),ytm-rich-section-renderer:has(a[href^="/shorts"]){display:none!important}' : '');
       if (window.__levePage) return; window.__levePage = true;
       var css = document.createElement('style');
       css.textContent = [
-        'ytm-reel-shelf-renderer','ytm-shorts-lockup-view-model','ytm-shorts-lockup-view-model-v2',
-        'ytm-pivot-bar-item-renderer:has(a[href^="/shorts"])','a[href^="/shorts"]',
         'ytm-promoted-sparkles-web-renderer','ytm-promoted-video-renderer','ytm-companion-ad-renderer',
         'ad-slot-renderer','ytm-ad-slot-renderer','.ytp-ad-overlay-container','.ytp-ce-element',
         'ytm-statement-banner-renderer','ytm-mealbar-promo-renderer','.mobile-topbar-header-content ytm-button-renderer:has(a[href*="app"])',
@@ -192,6 +196,40 @@ private class LeveYTBridge(private val onToast: (String) -> Unit) {
 private fun videoIdOf(url: String?): String? =
     url?.let { runCatching { it.toUri().getQueryParameter("v") }.getOrNull() }
 
+private val WebThemeKey = androidx.datastore.preferences.core.stringPreferencesKey("leveWebTheme")
+private val WebShortsKey = booleanPreferencesKey("leveWebHideShorts")
+
+/** Um WebView só, reaproveitado: o 2º vídeo em diante abre bem mais rápido. */
+private object LeveWebHolder {
+    var view: WebView? = null
+    var wrapper: android.content.MutableContextWrapper? = null
+}
+
+/** Tema do site: f6=400 é o modo escuro do próprio YouTube. */
+private fun applyYouTubeTheme(theme: String) {
+    val cm = CookieManager.getInstance()
+    val current = cm.getCookie("https://m.youtube.com").orEmpty()
+    val pref =
+        current.split(";").map { it.trim() }.firstOrNull { it.startsWith("PREF=") }?.removePrefix("PREF=").orEmpty()
+    val parts = pref.split("&").filter { it.isNotBlank() && !it.startsWith("f6=") }.toMutableList()
+    if (theme != "claro") parts += "f6=400"
+    val value = "PREF=" + parts.joinToString("&") + "; domain=.youtube.com; path=/; max-age=63072000"
+    cm.setCookie("https://m.youtube.com", value)
+    cm.setCookie("https://www.youtube.com", value)
+    cm.flush()
+}
+
+private fun setSystemBarsHidden(window: android.view.Window?, hidden: Boolean) {
+    window ?: return
+    val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+    if (hidden) {
+        controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+    } else {
+        controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+    }
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun LeveYouTubeWebScreen(startVideoId: String?) {
@@ -203,49 +241,62 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
 
     var speed by rememberPreference(WebSpeedKey, 1f)
     var sponsor by rememberPreference(WebSponsorKey, true)
+    var theme by rememberPreference(WebThemeKey, "escuro")
+    var hideShorts by rememberPreference(WebShortsKey, true)
     var loop by remember { mutableStateOf(false) }
     var currentUrl by remember { mutableStateOf<String?>(null) }
+    var progress by remember { mutableStateOf(0) }
     var fullscreenView by remember { mutableStateOf<View?>(null) }
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     var sleepJob by remember { mutableStateOf<Job?>(null) }
-    var sleepLabel by remember { mutableStateOf("Timer") }
+    var sleepMinutes by remember { mutableStateOf(0) }
     var votes by remember { mutableStateOf<String?>(null) }
+    var menuOpen by remember { mutableStateOf(false) }
 
-    // A música do app para enquanto o YouTube toca
     LaunchedEffect(Unit) { playerConnection?.player?.pause() }
 
     val webView =
         remember {
-            WebView(context).apply {
-                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                setBackgroundColor(android.graphics.Color.BLACK)
-                keepScreenOn = true
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.mediaPlaybackRequiresUserGesture = false
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
-                CookieManager.getInstance().setAcceptCookie(true)
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                addJavascriptInterface(
-                    LeveYTBridge { text -> post { Toast.makeText(context, text, Toast.LENGTH_SHORT).show() } },
-                    "LeveYT",
-                )
-                if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                    WebViewCompat.addDocumentStartJavaScript(
-                        this,
-                        documentStartScript,
-                        setOf("https://m.youtube.com", "https://www.youtube.com", "https://youtube.com"),
+            applyYouTubeTheme(theme)
+            val existing = LeveWebHolder.view
+            if (existing != null) {
+                LeveWebHolder.wrapper?.baseContext = context
+                existing
+            } else {
+                val wrapper = android.content.MutableContextWrapper(context)
+                WebView(wrapper).apply {
+                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                    setBackgroundColor(android.graphics.Color.BLACK)
+                    keepScreenOn = true
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.mediaPlaybackRequiresUserGesture = false
+                    settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                    CookieManager.getInstance().setAcceptCookie(true)
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                    addJavascriptInterface(
+                        LeveYTBridge { text -> post { Toast.makeText(this.context, text, Toast.LENGTH_SHORT).show() } },
+                        "LeveYT",
                     )
+                    if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                        WebViewCompat.addDocumentStartJavaScript(
+                            this,
+                            documentStartScript,
+                            setOf("https://m.youtube.com", "https://www.youtube.com", "https://youtube.com"),
+                        )
+                    }
+                    LeveWebHolder.view = this
+                    LeveWebHolder.wrapper = wrapper
                 }
             }
         }
 
-    fun injectPage() = webView.evaluateJavascript(pageScript(speed, sponsor), null)
+    fun injectPage() = webView.evaluateJavascript(pageScript(speed, sponsor, theme == "preto", hideShorts), null)
 
     fun js(code: String) = webView.evaluateJavascript(code, null)
 
     DisposableEffect(webView) {
+        webView.onResume()
         webView.webViewClient =
             object : WebViewClient() {
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
@@ -257,7 +308,6 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
 
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val host = request.url.host.orEmpty()
-                    // Fica dentro do YouTube; links de fora abrem no navegador
                     if (host.contains("youtube.com") || host.contains("youtu.be") || host.contains("google.com")) return false
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, request.url)) }
                     return true
@@ -269,9 +319,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                     }
                 }
 
-                override fun onPageFinished(view: WebView, url: String?) {
-                    injectPage()
-                }
+                override fun onPageFinished(view: WebView, url: String?) = injectPage()
 
                 override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
                     currentUrl = url
@@ -280,6 +328,10 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
             }
         webView.webChromeClient =
             object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView, newProgress: Int) {
+                    progress = newProgress
+                }
+
                 override fun onShowCustomView(view: View, callback: CustomViewCallback) {
                     fullscreenView = view
                     fullscreenCallback = callback
@@ -290,21 +342,27 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                     fullscreenCallback = null
                 }
             }
-        webView.loadUrl(
-            if (startVideoId.isNullOrBlank()) "https://m.youtube.com/" else "https://m.youtube.com/watch?v=$startVideoId",
-        )
+        val target = if (startVideoId.isNullOrBlank()) null else "https://m.youtube.com/watch?v=$startVideoId"
+        when {
+            webView.url.isNullOrBlank() || webView.url == "about:blank" -> webView.loadUrl(target ?: "https://m.youtube.com/")
+            target != null && videoIdOf(webView.url) != startVideoId -> webView.loadUrl(target)
+            else -> {
+                currentUrl = webView.url
+                injectPage()
+            }
+        }
         onDispose {
             sleepJob?.cancel()
-            webView.loadUrl("about:blank")
-            webView.destroy()
+            // Não destrói: só pausa e solta da tela, pra reabrir rápido
+            webView.evaluateJavascript("var v=document.querySelector('video'); if(v) v.pause();", null)
+            (webView.parent as? ViewGroup)?.removeView(webView)
+            webView.onPause()
         }
     }
 
-    // Reaplica velocidade/SponsorBlock quando mudam
-    LaunchedEffect(speed, sponsor) { js("window.__leveSpeed=$speed; window.__leveSB=$sponsor;") }
+    LaunchedEffect(speed, sponsor, theme, hideShorts) { injectPage() }
     LaunchedEffect(loop) { js("var v=document.querySelector('video'); if(v) v.loop=$loop;") }
 
-    // Likes e dislikes (Return YouTube Dislike) do vídeo aberto
     val currentVideo = videoIdOf(currentUrl)
     LaunchedEffect(currentVideo) {
         votes = null
@@ -315,23 +373,30 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                     val text = java.net.URL("https://returnyoutubedislikeapi.com/votes?videoId=$id").readText()
                     val likes = Regex("\"likes\":(\\d+)").find(text)?.groupValues?.get(1)?.toLongOrNull()
                     val dislikes = Regex("\"dislikes\":(\\d+)").find(text)?.groupValues?.get(1)?.toLongOrNull()
-                    "👍 ${shortCount(likes)}  👎 ${shortCount(dislikes)}"
+                    "👍 ${shortCount(likes)}   👎 ${shortCount(dislikes)}"
                 }.getOrNull()
             }
     }
 
     DisposableEffect(fullscreenView) {
+        val on = fullscreenView != null
         activity?.requestedOrientation =
-            if (fullscreenView != null) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+            if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        setSystemBarsHidden(activity?.window, on)
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            setSystemBarsHidden(activity?.window, false)
+        }
     }
 
-    BackHandler(enabled = fullscreenView != null || webView.canGoBack()) {
-        if (fullscreenView != null) {
-            fullscreenCallback?.onCustomViewHidden()
-            fullscreenView = null
-        } else {
-            webView.goBack()
+    BackHandler(enabled = menuOpen || fullscreenView != null || webView.canGoBack()) {
+        when {
+            menuOpen -> menuOpen = false
+            fullscreenView != null -> {
+                fullscreenCallback?.onCustomViewHidden()
+                fullscreenView = null
+            }
+            else -> webView.goBack()
         }
     }
 
@@ -362,80 +427,139 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
         }
     }
 
-    fun toggleSleepTimer() {
-        val options = listOf(15, 30, 60, 0)
-        val currentMinutes = sleepLabel.removePrefix("Timer ").removeSuffix(" min").toIntOrNull() ?: 0
-        val next = options[(options.indexOf(currentMinutes).coerceAtLeast(-1) + 1) % options.size]
+    fun setSleepTimer(minutes: Int) {
         sleepJob?.cancel()
-        if (next == 0) {
-            sleepLabel = "Timer"
-            return
-        }
-        sleepLabel = "Timer $next min"
+        sleepMinutes = minutes
+        if (minutes == 0) return
         sleepJob =
             scope.launch {
-                delay(next * 60_000L)
+                delay(minutes * 60_000L)
                 js("var v=document.querySelector('video'); if(v) v.pause();")
-                sleepLabel = "Timer"
+                sleepMinutes = 0
                 Toast.makeText(context, "Timer: vídeo pausado", Toast.LENGTH_SHORT).show()
             }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        // Barra Leve (estilo ReVanced)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-        ) {
-            WebChip("Ouvir só o áudio", highlighted = true) { listenAsAudio() }
-            WebChip("Velocidade ${if (speed % 1f == 0f) speed.toInt().toString() else speed.toString()}x", highlighted = speed != 1f) {
-                val options = listOf(1f, 1.25f, 1.5f, 1.75f, 2f, 0.5f, 0.75f)
-                speed = options[(options.indexOf(speed).coerceAtLeast(0) + 1) % options.size]
-            }
-            WebChip(if (sponsor) "SponsorBlock ✓" else "SponsorBlock ✗", highlighted = sponsor) { sponsor = !sponsor }
-            WebChip(if (loop) "Repetir ✓" else "Repetir", highlighted = loop) { loop = !loop }
-            WebChip(sleepLabel, highlighted = sleepLabel != "Timer") { toggleSleepTimer() }
-            votes?.let { WebChip(it) {} }
-            WebChip("Canal") {
-                val id = videoIdOf(webView.url)
-                if (id != null) openLeveChannel(navController, scope, context, id, null)
-            }
-            WebChip("Compartilhar") {
-                val url = webView.url ?: return@WebChip
-                context.startActivity(
-                    Intent.createChooser(
-                        Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, url.replace("m.youtube.com", "youtube.com"))
-                        },
-                        null,
-                    ),
-                )
-            }
-            WebChip("Recarregar") { webView.reload() }
-            WebChip("Player Leve (beta)") {
-                videoIdOf(webView.url)?.let { id ->
-                    js("var v=document.querySelector('video'); if(v) v.pause();")
-                    navController.navigate("leve_video_native/$id")
-                }
-            }
-        }
-
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = {
                 (webView.parent as? ViewGroup)?.removeView(webView)
                 webView
             },
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            modifier = Modifier.fillMaxSize(),
         )
+
+        // Barrinha de carregamento fina no topo
+        if (progress in 1..99) {
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { progress / 100f },
+                color = WebGreen,
+                trackColor = Color.Transparent,
+                modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+            )
+        }
+
+        // Engrenagem discreta (meio transparente)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 14.dp, bottom = 150.dp)
+                .alpha(if (menuOpen) 1f else 0.45f)
+                .size(46.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(Color(0xCC202020))
+                .clickable { menuOpen = !menuOpen },
+        ) {
+            Text("⚙", fontSize = 22.sp, color = Color.White)
+        }
+
+        if (menuOpen) {
+            // Fundo escuro: toque fora fecha
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0x88000000))
+                    .clickable { menuOpen = false },
+            )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    .background(Color(0xFF181818))
+                    .clickable(enabled = false) {}
+                    .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 120.dp),
+            ) {
+                Text("Leve · YouTube", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                votes?.let { Text(it, fontSize = 13.sp, color = Color(0xFFB3B3B3)) }
+
+                MenuSection("Reprodução") {
+                    WebChip("Ouvir só o áudio", highlighted = true) {
+                        menuOpen = false
+                        listenAsAudio()
+                    }
+                    WebChip("Velocidade ${if (speed % 1f == 0f) speed.toInt().toString() else speed.toString()}x", highlighted = speed != 1f) {
+                        val options = listOf(1f, 1.25f, 1.5f, 1.75f, 2f, 0.5f, 0.75f)
+                        speed = options[(options.indexOf(speed).coerceAtLeast(0) + 1) % options.size]
+                    }
+                    WebChip(if (loop) "Repetir ✓" else "Repetir", highlighted = loop) { loop = !loop }
+                    WebChip(if (sleepMinutes == 0) "Timer" else "Timer $sleepMinutes min", highlighted = sleepMinutes != 0) {
+                        val options = listOf(15, 30, 60, 0)
+                        setSleepTimer(options[(options.indexOf(sleepMinutes) + 1) % options.size])
+                    }
+                }
+                MenuSection("Limpeza") {
+                    WebChip(if (sponsor) "SponsorBlock ✓" else "SponsorBlock", highlighted = sponsor) { sponsor = !sponsor }
+                    WebChip(if (hideShorts) "Sem Shorts ✓" else "Mostrar Shorts", highlighted = hideShorts) { hideShorts = !hideShorts }
+                    WebChip("Anúncios bloqueados ✓", highlighted = true) {}
+                }
+                MenuSection("Tema") {
+                    listOf("escuro" to "Escuro", "preto" to "Preto (AMOLED)", "claro" to "Claro").forEach { (key, label) ->
+                        WebChip(label, highlighted = theme == key) {
+                            if (theme != key) {
+                                val needsReload = (theme == "claro") != (key == "claro")
+                                theme = key
+                                applyYouTubeTheme(key)
+                                if (needsReload) webView.reload()
+                            }
+                        }
+                    }
+                }
+                MenuSection("Mais") {
+                    WebChip("Canal") {
+                        menuOpen = false
+                        videoIdOf(webView.url)?.let { openLeveChannel(navController, scope, context, it, null) }
+                    }
+                    WebChip("Compartilhar") {
+                        val url = webView.url ?: return@WebChip
+                        context.startActivity(
+                            Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, url.replace("m.youtube.com", "youtube.com"))
+                                },
+                                null,
+                            ),
+                        )
+                    }
+                    WebChip("Recarregar") {
+                        menuOpen = false
+                        webView.reload()
+                    }
+                    WebChip("Player Leve (beta)") {
+                        menuOpen = false
+                        videoIdOf(webView.url)?.let { id ->
+                            js("var v=document.querySelector('video'); if(v) v.pause();")
+                            navController.navigate("leve_video_native/$id")
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    // Tela cheia do próprio YouTube
+    // Tela cheia de verdade: sem barra de notificação e sem botões do sistema
     fullscreenView?.let { view ->
         Dialog(
             onDismissRequest = {
@@ -444,6 +568,20 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
             },
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) {
+            val dialogWindow = (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+            LaunchedEffect(dialogWindow) {
+                dialogWindow?.let { w ->
+                    w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                    w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK))
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                        w.attributes = w.attributes.apply {
+                            layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                        }
+                    }
+                    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(w, false)
+                    setSystemBarsHidden(w, true)
+                }
+            }
             Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
                 AndroidView(
                     factory = { ctx ->
@@ -457,6 +595,20 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
             }
         }
     }
+}
+
+@Composable
+private fun MenuSection(title: String, content: @Composable () -> Unit) {
+    Text(
+        title,
+        fontSize = 12.sp,
+        color = Color(0xFFB3B3B3),
+        modifier = Modifier.padding(top = 14.dp, bottom = 6.dp),
+    )
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+    ) { content() }
 }
 
 private fun shortCount(n: Long?): String =
@@ -473,11 +625,11 @@ private fun WebChip(label: String, highlighted: Boolean = false, onClick: () -> 
         text = label,
         fontSize = 13.sp,
         fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Normal,
-        color = if (highlighted) Color.Black else MaterialTheme.colorScheme.onSurface,
+        color = if (highlighted) Color.Black else Color.White,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(if (highlighted) WebGreen else MaterialTheme.colorScheme.surfaceContainerHigh)
+            .background(if (highlighted) WebGreen else Color(0xFF2A2A2A))
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 9.dp),
     )
 }
