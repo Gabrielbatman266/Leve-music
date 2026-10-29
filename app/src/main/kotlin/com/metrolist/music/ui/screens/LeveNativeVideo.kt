@@ -205,7 +205,13 @@ fun LeveVideoScreen(videoId: String) {
                     .setAllowCrossProtocolRedirects(true)
                     .setDefaultRequestProperties(stream.headers)
                     .apply { stream.headers["User-Agent"]?.let { setUserAgent(it) } }
-            val factory = ProgressiveMediaSource.Factory(http)
+            val source: androidx.media3.datasource.DataSource.Factory =
+                if (stream.chunkSize > 0) {
+                    com.metrolist.music.playback.ChunkedRangeDataSourceFactory(http, stream.chunkSize)
+                } else {
+                    http
+                }
+            val factory = ProgressiveMediaSource.Factory(source)
             exo.setMediaSource(
                 MergingMediaSource(
                     factory.createMediaSource(MediaItem.fromUri(stream.videoUrl)),
@@ -217,7 +223,8 @@ fun LeveVideoScreen(videoId: String) {
             exo.playbackParameters = PlaybackParameters(speed)
             exo.playWhenReady = true
             loading = false
-        }.onFailure {
+        }.onFailure { e ->
+            Toast.makeText(context, "Player próprio não abriu (${e.message?.take(80)}). Usando o do YouTube.", Toast.LENGTH_LONG).show()
             useEmbed = true
         }
     }
@@ -227,6 +234,7 @@ fun LeveVideoScreen(videoId: String) {
         val listener =
             object : Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
+                    Toast.makeText(context, "Erro no vídeo (${error.errorCodeName}). Usando o player do YouTube.", Toast.LENGTH_LONG).show()
                     useEmbed = true
                 }
             }

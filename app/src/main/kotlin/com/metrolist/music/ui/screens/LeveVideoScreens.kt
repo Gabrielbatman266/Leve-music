@@ -189,7 +189,13 @@ internal fun LeveEmbedVideoScreen(videoId: String) {
                 keepScreenOn = true
                 webViewClient = WebViewClient()
                 webChromeClient = WebChromeClient()
-                addJavascriptInterface(LeveBridge { code -> post { errorCode = code } }, "LeveBridge")
+                addJavascriptInterface(
+                    LeveBridge { code ->
+                        // Vídeo bloqueado no player embutido: abre a versão mobile do YouTube aqui mesmo
+                        post { loadUrl("https://m.youtube.com/watch?v=$videoId") }
+                    },
+                    "LeveBridge",
+                )
                 loadDataWithBaseURL("https://www.youtube.com", playerHtml(videoId), "text/html", "utf-8", null)
             }
         }
@@ -305,6 +311,7 @@ internal fun LeveEmbedVideoScreen(videoId: String) {
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
+                VideoChip("Site do YouTube", highlighted = true) { webView.loadUrl("https://m.youtube.com/watch?v=$videoId") }
                 VideoChip("−10s") { js("leveSeek(-10)") }
                 VideoChip("⏯") { js("leveToggle()") }
                 VideoChip("+10s") { js("leveSeek(10)") }

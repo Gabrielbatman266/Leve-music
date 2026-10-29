@@ -112,7 +112,7 @@ object InnerTubeXPlayer {
         try {
             val hints =
                 ContentHints(wantVideo = true, maxVideoHeight = maxHeight)
-                    .withStreamCapabilities(allowHls = false, allowSabr = false, allowBoundedRange = false)
+                    .withStreamCapabilities(allowHls = false, allowSabr = false, allowBoundedRange = true)
             val stream =
                 requireNotNull(
                     bundle().extractor.extract(
@@ -130,6 +130,12 @@ object InnerTubeXPlayer {
                     headers = stream.headers,
                     height = stream.videoHeight,
                     availableHeights = stream.availableVideoHeights.distinct().sortedDescending(),
+                    chunkSize =
+                        if (stream.requireBoundedRange || stream.useRangeChunks) {
+                            stream.rangeChunkSizeBytes.takeIf { it > 0 } ?: (1L shl 20)
+                        } else {
+                            0L
+                        },
                 ),
             )
         } catch (error: CancellationException) {
@@ -416,4 +422,6 @@ data class LeveVideoStream(
     val headers: Map<String, String>,
     val height: Int?,
     val availableHeights: List<Int>,
+    /** > 0 quando o YouTube exige baixar em pedaços. */
+    val chunkSize: Long = 0L,
 )
