@@ -41,6 +41,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -131,6 +133,7 @@ fun DeviceMusicScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var openGroup by rememberSaveable { mutableStateOf<String?>(null) }
     var sortMenuOpen by remember { mutableStateOf(false) }
+    var saveDownloads by rememberPreference(com.metrolist.music.utils.SaveDownloadsToDeviceKey, false)
     val listState = rememberLazyListState()
 
     BackHandler(enabled = openGroup != null) { openGroup = null }
@@ -256,6 +259,38 @@ fun DeviceMusicScreen(
                             modifier = Modifier.clickable { query = "" }.padding(4.dp),
                         )
                     }
+                }
+            }
+
+            // Opção: guardar downloads no celular
+            item(key = "save_downloads") {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .clickable { saveDownloads = !saveDownloads }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Guardar downloads no celular", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (saveDownloads) {
+                                "Ligado: cada música baixada também vai pra Music/Leve Music"
+                            } else {
+                                "Desligado: downloads ficam só dentro do app"
+                            },
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = saveDownloads,
+                        onCheckedChange = { saveDownloads = it },
+                        colors = SwitchDefaults.colors(checkedTrackColor = LeveGreen, checkedThumbColor = Color.Black),
+                    )
                 }
             }
 

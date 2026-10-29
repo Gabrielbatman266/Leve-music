@@ -21,6 +21,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
+val SaveDownloadsToDeviceKey = androidx.datastore.preferences.core.booleanPreferencesKey("leveSaveDownloadsToDevice")
+
 object DeviceExport {
     const val FOLDER = "Leve Music"
 
