@@ -311,7 +311,10 @@ fun OnlineSearchResult(
                                         playerConnection.togglePlayPause()
                                     } else {
                                         playerConnection.playQueue(
-                                            if (autoRadioQueue) {
+                                            if (com.metrolist.music.utils.LeveYouTubeSearch.isYouTubeVideo(item.musicVideoType)) {
+                                                // Vídeo do YouTube normal: continua com vídeos parecidos, não com música
+                                                com.metrolist.music.playback.queues.LeveVideoQueue(item)
+                                            } else if (autoRadioQueue) {
                                                 YouTubeQueue(
                                                     WatchEndpoint(videoId = item.id),
                                                     item.toMediaMetadata(),

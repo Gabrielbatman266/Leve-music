@@ -352,6 +352,39 @@ fun YouTubeSongMenu(
         }
 
         item {
+            val leveScope = androidx.compose.runtime.rememberCoroutineScope()
+            Material3MenuGroup(
+                items =
+                    listOf(
+                        Material3MenuItemData(
+                            title = { Text(text = "Assistir vídeo") },
+                            icon = { Icon(painter = painterResource(R.drawable.play), contentDescription = null) },
+                            onClick = {
+                                navController.navigate("leve_video/${song.id}")
+                                onDismiss()
+                            },
+                        ),
+                        Material3MenuItemData(
+                            title = { Text(text = "Ver canal") },
+                            icon = { Icon(painter = painterResource(R.drawable.person), contentDescription = null) },
+                            onClick = {
+                                com.metrolist.music.ui.screens.openLeveChannel(
+                                    navController,
+                                    leveScope,
+                                    context,
+                                    song.id,
+                                    song.artists.firstOrNull()?.id,
+                                )
+                                onDismiss()
+                            },
+                        ),
+                    ),
+            )
+        }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+
+        item {
             Material3MenuGroup(
                 items = listOfNotNull(
                     if (listenTogetherManager != null && listenTogetherManager.isInRoom && !listenTogetherManager.isHost) {

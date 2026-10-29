@@ -382,6 +382,44 @@ fun PlayerMenu(
             )
         }
 
+        if (!com.metrolist.music.utils.LocalMusic.isLocalId(mediaMetadata.id)) {
+            item {
+                val leveScope = androidx.compose.runtime.rememberCoroutineScope()
+                Material3MenuGroup(
+                    items =
+                        listOf(
+                            Material3MenuItemData(
+                                title = { Text(text = "Assistir vídeo") },
+                                description = { Text(text = "Player de vídeo simples") },
+                                icon = { Icon(painter = painterResource(R.drawable.play), contentDescription = null) },
+                                onClick = {
+                                    navController.navigate("leve_video/${mediaMetadata.id}")
+                                    playerBottomSheetState.collapseSoft()
+                                    onDismiss()
+                                },
+                            ),
+                            Material3MenuItemData(
+                                title = { Text(text = "Ver canal") },
+                                description = { Text(text = "Vídeos de quem postou") },
+                                icon = { Icon(painter = painterResource(R.drawable.person), contentDescription = null) },
+                                onClick = {
+                                    com.metrolist.music.ui.screens.openLeveChannel(
+                                        navController,
+                                        leveScope,
+                                        context,
+                                        mediaMetadata.id,
+                                        mediaMetadata.artists.firstOrNull()?.id,
+                                    )
+                                    playerBottomSheetState.collapseSoft()
+                                    onDismiss()
+                                },
+                            ),
+                        ),
+                )
+            }
+            item { Spacer(modifier = Modifier.height(12.dp)) }
+        }
+
         item {
             // Check if this is a podcast episode (album ID doesn't start with MPREb_)
             val isPodcast = mediaMetadata.album?.let { !it.id.startsWith("MPREb_") } ?: false

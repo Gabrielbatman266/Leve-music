@@ -103,6 +103,14 @@ fun NavGraphBuilder.navigationBuilder(
         DeviceMusicScreen()
     }
 
+    composable("leve_video/{id}") { backStackEntry ->
+        LeveVideoScreen(videoId = backStackEntry.arguments?.getString("id").orEmpty())
+    }
+
+    composable("leve_channel/{id}") { backStackEntry ->
+        LeveChannelScreen(channelId = backStackEntry.arguments?.getString("id").orEmpty())
+    }
+
     composable(Screens.ListenTogether.route) {
         ListenTogetherScreen(navController, showTopBar = false)
     }

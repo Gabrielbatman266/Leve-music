@@ -175,8 +175,11 @@ fun LeveHomeScreen(
     }
 
     fun playOnline(title: String, songs: List<SongItem>, index: Int) {
-        if (songs.getOrNull(index)?.id == currentId && currentId != null) {
+        val picked = songs.getOrNull(index)
+        if (picked?.id == currentId && currentId != null) {
             playerConnection.togglePlayPause()
+        } else if (picked != null && com.metrolist.music.utils.LeveYouTubeSearch.isYouTubeVideo(picked.musicVideoType)) {
+            playerConnection.playQueue(com.metrolist.music.playback.queues.LeveVideoQueue(picked))
         } else {
             playerConnection.playQueue(
                 ListQueue(title = title, items = songs.map { it.toMediaItem() }, startIndex = index),
