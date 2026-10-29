@@ -355,6 +355,17 @@ fun LeveHomeScreen(
                         .horizontalScroll(rememberScrollState())
                         .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                 ) {
+                    Text(
+                        text = "▶ YouTube",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xFFE53935))
+                            .combinedClickable(onClick = { navController.navigate("leve_youtube") })
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                    )
                     HomeCategory.entries.forEach { cat ->
                         val selected = cat == category
                         Text(

@@ -104,7 +104,15 @@ fun NavGraphBuilder.navigationBuilder(
     }
 
     composable("leve_video/{id}") { backStackEntry ->
+        LeveYouTubeWebScreen(startVideoId = backStackEntry.arguments?.getString("id"))
+    }
+
+    composable("leve_video_native/{id}") { backStackEntry ->
         LeveVideoScreen(videoId = backStackEntry.arguments?.getString("id").orEmpty())
+    }
+
+    composable("leve_youtube") {
+        LeveYouTubeWebScreen(startVideoId = null)
     }
 
     composable("leve_channel/{id}") { backStackEntry ->
