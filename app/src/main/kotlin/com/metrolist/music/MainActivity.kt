@@ -728,7 +728,8 @@ class MainActivity : FragmentActivity() {
                 LaunchedEffect(Unit) {
                     val lastSeenVersion = dataStore.data.first()[LastSeenVersionKey] ?: ""
                     val currentVersion = BuildConfig.BASE_VERSION_NAME
-                    if (lastSeenVersion != currentVersion) {
+                    // Leve Music: sem a tela de novidades do Metrolist a cada atualização
+                    if (false && lastSeenVersion != currentVersion) {
                         showChangelog.value = true
                     }
                 }

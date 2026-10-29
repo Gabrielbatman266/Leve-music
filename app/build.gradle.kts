@@ -40,8 +40,9 @@ android {
         applicationId = applicationIdOverride ?: baseApplicationId
         minSdk = 26
         targetSdk = 36
-        versionCode = 153
-        versionName = "13.7.0"
+        // Leve Music: versionCode = 1000 + número da compilação (usado pelo atualizador do app)
+        versionCode = System.getenv("LEVE_VERSION_CODE")?.toIntOrNull() ?: 153
+        versionName = System.getenv("LEVE_VERSION_NAME") ?: "13.7.0"
         val baseVersionName = requireNotNull(versionName)
         buildConfigField("String", "BASE_VERSION_NAME", "\"$baseVersionName\"")
         buildCommit?.let { versionName = "$baseVersionName+$it" }

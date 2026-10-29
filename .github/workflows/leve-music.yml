@@ -45,6 +45,11 @@ jobs:
           fi
           echo "LEVE_KEYSTORE=$RUNNER_TEMP/leve.keystore" >> "$GITHUB_ENV"
 
+      - name: Version
+        run: |
+          echo "LEVE_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "LEVE_VERSION_NAME=Leve #${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
       - name: Build APK
         run: |
           chmod +x gradlew

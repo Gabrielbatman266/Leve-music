@@ -78,6 +78,7 @@ import com.metrolist.music.ui.menu.YouTubeSongMenu
 import com.metrolist.music.ui.utils.resize
 import com.metrolist.music.viewmodels.LeveHomeViewModel
 import java.time.LocalTime
+import kotlinx.coroutines.launch
 
 private val SpotifyGreen = Color(0xFF1DB954)
 
@@ -148,8 +149,43 @@ fun LeveHomeScreen(
     val searchSections by viewModel.searchSections.collectAsStateWithLifecycle()
     val mixes by viewModel.mixes.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
-    var showCreatePlaylist by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    var showCreatePlaylist by remember { mutableStateOf(false) }
+    val updateScope = androidx.compose.runtime.rememberCoroutineScope()
+    var availableUpdate by remember { mutableStateOf<com.metrolist.music.utils.LeveUpdate?>(null) }
+    var updateStatus by remember { mutableStateOf<String?>(null) }
+    var updateProgress by remember { mutableStateOf<Float?>(null) }
+    LaunchedEffect(Unit) {
+        com.metrolist.music.utils.LeveUpdater.check().onSuccess { availableUpdate = it }
+    }
+
+    fun startUpdate(update: com.metrolist.music.utils.LeveUpdate) {
+        if (updateProgress != null) return
+        updateProgress = 0f
+        updateStatus = "Baixando atualização…"
+        updateScope.launch {
+            com.metrolist.music.utils.LeveUpdater.download(context, update) { p -> updateProgress = p }
+                .onSuccess { file ->
+                    updateProgress = null
+                    val opened = com.metrolist.music.utils.LeveUpdater.install(context, file)
+                    updateStatus = if (opened) "Toque em Instalar/Atualizar na tela do Android" else "Libere \"Instalar apps desconhecidos\" pro Leve Music e toque em Atualizar de novo"
+                }.onFailure {
+                    updateProgress = null
+                    updateStatus = "Falhou ao baixar: ${it.message}"
+                }
+        }
+    }
+
+    fun checkUpdateNow() {
+        updateStatus = "Procurando atualização…"
+        updateScope.launch {
+            com.metrolist.music.utils.LeveUpdater.check()
+                .onSuccess { found ->
+                    availableUpdate = found
+                    updateStatus = if (found == null) "Você já está na versão mais nova (#${com.metrolist.music.utils.LeveUpdater.currentBuild})" else null
+                }.onFailure { updateStatus = "Sem conexão com o GitHub agora" }
+        }
+    }
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.load() }
@@ -276,6 +312,31 @@ fun LeveHomeScreen(
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             modifier = Modifier.fillMaxSize(),
         ) {
+            availableUpdate?.let { update ->
+                item(key = "update_banner") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(SpotifyGreen)
+                            .clickable { startUpdate(update) }
+                            .padding(14.dp),
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Atualização disponível: #${update.build}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                            Text(
+                                updateProgress?.let { "Baixando… ${(it * 100).toInt()}%" } ?: (updateStatus ?: "Você está na #${com.metrolist.music.utils.LeveUpdater.currentBuild}. Toque pra atualizar"),
+                                fontSize = 12.sp,
+                                color = Color.Black,
+                            )
+                        }
+                        Text("Atualizar", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                    }
+                }
+            }
+
             item(key = "greeting") {
                 Text(
                     text = greeting,
@@ -576,6 +637,33 @@ fun LeveHomeScreen(
                                     .clickable { unhideTopic(topic) }
                                     .padding(horizontal = 14.dp, vertical = 8.dp),
                             )
+                        }
+                    }
+                }
+            }
+
+            item(key = "update_check") {
+                Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 28.dp)) {
+                    Text(
+                        "Leve Music #${com.metrolist.music.utils.LeveUpdater.currentBuild}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Verificar atualização",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .clickable { checkUpdateNow() }
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                    )
+                    if (availableUpdate == null) {
+                        updateStatus?.let {
+                            Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
                         }
                     }
                 }
