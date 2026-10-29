@@ -963,6 +963,46 @@ fun SongMenu(
             )
         }
 
+        if (download?.state == Download.STATE_COMPLETED) {
+            item { Spacer(modifier = Modifier.height(12.dp)) }
+            item {
+                Material3MenuGroup(
+                    items =
+                        listOf(
+                            Material3MenuItemData(
+                                title = { Text(text = "Salvar no celular") },
+                                description = { Text(text = "Copia pra pasta Music/Leve Music") },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.leve_phone),
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    Toast.makeText(context, "Salvando no celular…", Toast.LENGTH_SHORT).show()
+                                    // Escopo próprio: continua salvando mesmo se o menu fechar
+                                    kotlinx.coroutines.MainScope().launch {
+                                        val result =
+                                            com.metrolist.music.utils.DeviceExport.save(
+                                                context = context,
+                                                cache = downloadUtil.downloadCache,
+                                                database = database,
+                                                song = song,
+                                            )
+                                        val message =
+                                            result.fold(
+                                                onSuccess = { path -> "Salvo em $path" },
+                                                onFailure = { e -> "Não deu pra salvar: ${e.message}" },
+                                            )
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                            ),
+                        ),
+                )
+            }
+        }
+
         item { Spacer(modifier = Modifier.height(12.dp)) }
 
         item {
