@@ -70,6 +70,7 @@ import com.metrolist.music.LocalPlayerConnection
 import com.metrolist.music.R
 import com.metrolist.music.db.entities.Song
 import com.metrolist.music.extensions.toMediaItem
+import com.metrolist.music.models.toMediaMetadata
 import com.metrolist.music.playback.queues.ListQueue
 import com.metrolist.music.ui.component.LocalMenuState
 import com.metrolist.music.ui.menu.SongMenu
@@ -146,6 +147,9 @@ fun LeveHomeScreen(
     val madeForYou by viewModel.madeForYou.collectAsStateWithLifecycle()
     val searchSections by viewModel.searchSections.collectAsStateWithLifecycle()
     val mixes by viewModel.mixes.collectAsStateWithLifecycle()
+    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    var showCreatePlaylist by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.load() }
@@ -224,6 +228,13 @@ fun LeveHomeScreen(
     val everythingEmpty =
         category == HomeCategory.ALL && hiddenTopics.isEmpty() && recentSongs != null && likedSongs != null && searchSections != null &&
             recent.isEmpty() && liked.isEmpty() && forYou.isEmpty() && bySearch.isEmpty()
+
+    if (showCreatePlaylist) {
+        com.metrolist.music.ui.component.CreatePlaylistDialog(
+            onDismiss = { showCreatePlaylist = false },
+            allowSyncing = false,
+        )
+    }
 
     if (showHideDialog) {
         var draft by remember { mutableStateOf("") }
@@ -359,11 +370,54 @@ fun LeveHomeScreen(
                 }
             }
 
+            item(key = "playlists") {
+                val tiles = buildList {
+                    add(PlaylistTile("new", "Nova playlist", "Monte a sua", null, isAction = true))
+                    add(PlaylistTile("top", "Mais ouvidas", "As 50 que você mais escuta", recentSongs.orEmpty().firstOrNull()?.thumbnailUrl))
+                    add(PlaylistTile("rec", "Recomendadas pra você", "Toque pra gerar e abrir", mixes.orEmpty().firstOrNull()?.songs?.firstOrNull()?.thumbnail))
+                    if (likedSongs.orEmpty().isNotEmpty()) add(PlaylistTile("liked", "Curtidas", "${likedSongs.orEmpty().size}+ músicas", likedSongs.orEmpty().firstOrNull()?.thumbnailUrl))
+                    add(PlaylistTile("downloaded", "Baixadas", "Tocam sem internet", null))
+                    playlists.orEmpty().forEach { p ->
+                        add(PlaylistTile("pl_${p.id}", p.title, "${p.songCount} músicas", p.thumbnails.firstOrNull()))
+                    }
+                }
+                PlaylistRow(
+                    tiles = tiles,
+                    onClick = { tile ->
+                        when {
+                            tile.key == "new" -> showCreatePlaylist = true
+                            tile.key == "top" -> navController.navigate("top_playlist/50")
+                            tile.key == "liked" -> navController.navigate("auto_playlist/liked")
+                            tile.key == "downloaded" -> navController.navigate("auto_playlist/downloaded")
+                            tile.key == "rec" -> {
+                                val songs = viewModel.recommendedSongs()
+                                if (songs.isEmpty()) {
+                                    android.widget.Toast.makeText(context, "Ouça e pesquise algumas músicas primeiro", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    viewModel.savePlaylist("Recomendadas pra você", songs, fixedId = "LP_LEVE_RECOMMENDED") { id ->
+                                        navController.navigate("local_playlist/$id")
+                                    }
+                                }
+                            }
+                            tile.key.startsWith("pl_") -> navController.navigate("local_playlist/${tile.key.removePrefix("pl_")}")
+                        }
+                    },
+                )
+            }
+
             visibleMixes.takeIf { it.isNotEmpty() }?.let { mixList ->
                 item(key = "mixes") {
                     MixRow(
                         mixes = mixList,
                         onHide = { mix -> hideTopic(mix.seed.artists.firstOrNull()?.name ?: mix.seed.title) },
+                        onSave = { mix ->
+                            viewModel.savePlaylist(
+                                mix.title,
+                                listOf(mix.seed.toMediaMetadata()) + mix.songs.map { it.toMediaMetadata() },
+                            ) {
+                                android.widget.Toast.makeText(context, "Playlist \"${mix.title}\" salva", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         onPlay = { mix ->
                             playerConnection.playQueue(
                                 ListQueue(
@@ -697,6 +751,7 @@ private fun CardRow(
 private fun MixRow(
     mixes: List<com.metrolist.music.viewmodels.LeveMix>,
     onHide: (com.metrolist.music.viewmodels.LeveMix) -> Unit,
+    onSave: (com.metrolist.music.viewmodels.LeveMix) -> Unit,
     onPlay: (com.metrolist.music.viewmodels.LeveMix) -> Unit,
     onShuffle: (com.metrolist.music.viewmodels.LeveMix) -> Unit,
 ) {
@@ -783,14 +838,120 @@ private fun MixRow(
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        text = "Ocultar",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text(
+                            text = "Salvar",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SpotifyGreen,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .combinedClickable(onClick = { onSave(mix) })
+                                .padding(vertical = 4.dp),
+                        )
+                        Text(
+                            text = "Ocultar",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .combinedClickable(onClick = { onHide(mix) })
+                                .padding(vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class PlaylistTile(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val thumbnail: String?,
+    val isAction: Boolean = false,
+)
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PlaylistRow(
+    tiles: List<PlaylistTile>,
+    onClick: (PlaylistTile) -> Unit,
+) {
+    Column(modifier = Modifier.padding(top = 24.dp)) {
+        Text(
+            text = "Playlists",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            itemsIndexed(tiles, key = { _, t -> t.key }) { _, tile ->
+                Column(
+                    modifier = Modifier
+                        .width(120.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .combinedClickable(onClick = { onClick(tile) }),
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .combinedClickable(onClick = { onHide(mix) })
-                            .padding(vertical = 4.dp),
+                            .size(120.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                when (tile.key) {
+                                    "liked" -> Brush.linearGradient(listOf(Color(0xFF450AF5), Color(0xFFC4EFD9)))
+                                    "rec" -> Brush.linearGradient(listOf(Color(0xFF1DB954), Color(0xFF0B3D20)))
+                                    "top" -> Brush.linearGradient(listOf(Color(0xFFE8115B), Color(0xFF3A0A1C)))
+                                    "downloaded" -> Brush.linearGradient(listOf(Color(0xFF2D46B9), Color(0xFF0D1440)))
+                                    else -> Brush.linearGradient(listOf(Color(0xFF2E2E2E), Color(0xFF1A1A1A)))
+                                },
+                            ),
+                    ) {
+                        if (tile.thumbnail != null && tile.key.startsWith("pl_")) {
+                            AsyncImage(
+                                model = tile.thumbnail.resize(240, 240),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(120.dp),
+                            )
+                        } else {
+                            Text(
+                                text =
+                                    when (tile.key) {
+                                        "new" -> "+"
+                                        "liked" -> "♥"
+                                        "top" -> "★"
+                                        "rec" -> "✦"
+                                        "downloaded" -> "↓"
+                                        else -> "♪"
+                                    },
+                                fontSize = 40.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = tile.title,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = tile.subtitle,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

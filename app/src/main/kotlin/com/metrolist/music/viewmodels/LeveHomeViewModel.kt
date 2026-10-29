@@ -9,7 +9,14 @@ import androidx.lifecycle.viewModelScope
 import com.metrolist.innertube.YouTube
 import com.metrolist.innertube.models.SongItem
 import com.metrolist.music.db.MusicDatabase
+import com.metrolist.music.db.entities.Playlist
+import com.metrolist.music.db.entities.PlaylistEntity
+import com.metrolist.music.db.entities.PlaylistSongMap
 import com.metrolist.music.db.entities.Song
+import com.metrolist.music.models.MediaMetadata
+import com.metrolist.music.models.toMediaMetadata
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import com.metrolist.music.utils.LeveYouTubeSearch
 import com.metrolist.music.utils.LocalMusic
 import com.metrolist.innertube.models.WatchEndpoint
@@ -60,6 +67,50 @@ class LeveHomeViewModel @Inject constructor(
     val madeForYou = MutableStateFlow<List<Song>?>(null)
     val searchSections = MutableStateFlow<List<SearchBasedSection>?>(null)
     val mixes = MutableStateFlow<List<LeveMix>?>(null)
+
+    // Playlists do usuário (mais recentes primeiro)
+    val playlists: StateFlow<List<Playlist>?> =
+        database.playlistsByCreateDateAsc()
+            .map { it.reversed() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * Salva uma lista de músicas como playlist local (pode baixar, editar e tocar inteira).
+     * Com [fixedId], a playlist é reaproveitada e o conteúdo é trocado.
+     */
+    fun savePlaylist(
+        name: String,
+        songs: List<MediaMetadata>,
+        fixedId: String? = null,
+        onSaved: (String) -> Unit = {},
+    ) {
+        if (songs.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val id = fixedId ?: PlaylistEntity.generatePlaylistId()
+            database.insert(
+                PlaylistEntity(
+                    id = id,
+                    name = name,
+                    bookmarkedAt = LocalDateTime.now(),
+                    isEditable = true,
+                ),
+            )
+            if (fixedId != null) database.clearPlaylist(id)
+            songs.distinctBy { it.id }.forEachIndexed { index, metadata ->
+                database.insert(metadata)
+                database.insert(PlaylistSongMap(playlistId = id, songId = metadata.id, position = index))
+            }
+            withContext(Dispatchers.Main) { onSaved(id) }
+        }
+    }
+
+    /** Recomendadas: mistura mixes, "feitas pra você" e sugestões das buscas. */
+    fun recommendedSongs(): List<MediaMetadata> {
+        val fromMixes = mixes.value.orEmpty().flatMap { it.songs.take(8) }.map { it.toMediaMetadata() }
+        val fromForYou = madeForYou.value.orEmpty().map { it.toMediaMetadata() }
+        val fromSearch = searchSections.value.orEmpty().flatMap { it.songs.take(5) }.map { it.toMediaMetadata() }
+        return (fromMixes + fromForYou + fromSearch).distinctBy { it.id }.shuffled().take(60)
+    }
     val isRefreshing = MutableStateFlow(false)
 
     private var loaded = false
