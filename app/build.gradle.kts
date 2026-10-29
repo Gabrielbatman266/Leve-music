@@ -291,6 +291,7 @@ dependencies {
 
     implementation(libs.media3)
     implementation(libs.media3.session)
+    implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
     implementation(libs.media3.okhttp)
 
     // Google Cast - only included in GMS flavor (not available in F-Droid/FOSS builds)

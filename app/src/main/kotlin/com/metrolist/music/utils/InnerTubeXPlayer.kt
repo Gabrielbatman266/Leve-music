@@ -101,6 +101,43 @@ object InnerTubeXPlayer {
             Result.failure(error)
         }
 
+    /**
+     * Leve Music: vídeo + áudio separados para o player de vídeo próprio (sem anúncios).
+     * Só aceita clientes com URL direta (sem HLS/SABR/range obrigatório) para tocar simples no ExoPlayer.
+     */
+    suspend fun leveVideoStream(
+        videoId: String,
+        maxHeight: Int,
+    ): Result<LeveVideoStream> =
+        try {
+            val hints =
+                ContentHints(wantVideo = true, maxVideoHeight = maxHeight)
+                    .withStreamCapabilities(allowHls = false, allowSabr = false, allowBoundedRange = false)
+            val stream =
+                requireNotNull(
+                    bundle().extractor.extract(
+                        videoId = videoId,
+                        hints = hints,
+                        audioQuality = InnerTubeXAudioQuality.HIGH,
+                        clientPlaybackNonce = generateClientPlaybackNonce(),
+                    ),
+                ) { "Sem stream de vídeo" }
+            val videoUrl = requireNotNull(stream.videoUrl?.takeIf { it.startsWith("http") }) { "Sem URL de vídeo direta" }
+            Result.success(
+                LeveVideoStream(
+                    videoUrl = videoUrl,
+                    audioUrl = stream.audioUrl,
+                    headers = stream.headers,
+                    height = stream.videoHeight,
+                    availableHeights = stream.availableVideoHeights.distinct().sortedDescending(),
+                ),
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+
     internal fun markStreamClientFailed(
         videoId: String,
         clientName: String,
@@ -372,3 +409,11 @@ object InnerTubeXPlayer {
         )
     }
 }
+
+data class LeveVideoStream(
+    val videoUrl: String,
+    val audioUrl: String,
+    val headers: Map<String, String>,
+    val height: Int?,
+    val availableHeights: List<Int>,
+)

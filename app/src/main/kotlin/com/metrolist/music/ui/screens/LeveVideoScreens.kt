@@ -85,7 +85,7 @@ import kotlinx.coroutines.withContext
 
 private val VideoGreen = Color(0xFF1DB954)
 
-private fun Context.findActivity(): Activity? {
+internal fun Context.findActivity(): Activity? {
     var c: Context? = this
     while (c is ContextWrapper) {
         if (c is Activity) return c
@@ -94,7 +94,7 @@ private fun Context.findActivity(): Activity? {
     return null
 }
 
-private fun formatSeconds(total: Int?): String {
+internal fun formatSeconds(total: Int?): String {
     if (total == null || total <= 0) return ""
     val h = total / 3600
     val m = (total % 3600) / 60
@@ -159,7 +159,7 @@ private class LeveBridge(private val onError: (String) -> Unit) {
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun LeveVideoScreen(videoId: String) {
+internal fun LeveEmbedVideoScreen(videoId: String) {
     val context = LocalContext.current
     val navController = LocalNavController.current
     val playerConnection = LocalPlayerConnection.current
@@ -402,7 +402,7 @@ fun LeveVideoScreen(videoId: String) {
 }
 
 @Composable
-private fun VideoChip(label: String, highlighted: Boolean = false, onClick: () -> Unit) {
+internal fun VideoChip(label: String, highlighted: Boolean = false, onClick: () -> Unit) {
     Text(
         text = label,
         fontSize = 13.sp,
@@ -418,7 +418,7 @@ private fun VideoChip(label: String, highlighted: Boolean = false, onClick: () -
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun VideoRow(video: SongItem, onClick: () -> Unit, onLongClick: () -> Unit) {
+internal fun VideoRow(video: SongItem, onClick: () -> Unit, onLongClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
