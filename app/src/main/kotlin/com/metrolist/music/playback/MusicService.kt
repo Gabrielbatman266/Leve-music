@@ -360,6 +360,22 @@ class MusicService :
 
     lateinit var playerVolume: MutableStateFlow<Float>
     val isMuted = MutableStateFlow(false)
+
+    // Leve TV: enquanto a música toca na TV, o celular fica mudo (só controla)
+    val tvMuted = MutableStateFlow(false)
+    private var tvLinkInstance: com.metrolist.music.tv.LeveTvLink? = null
+    val tvLink: com.metrolist.music.tv.LeveTvLink
+        get() =
+            tvLinkInstance ?: com.metrolist.music.tv.LeveTvLink(
+                context = this,
+                scope = scope,
+                playerProvider = { if (::player.isInitialized) player else null },
+                resolve = { mediaId -> playbackForTv(mediaId) },
+                setTvMuted = { muted ->
+                    tvMuted.value = muted
+                    applyEffectiveVolume()
+                },
+            ).also { tvLinkInstance = it }
     private val sleepTimerVolumeMultiplier = MutableStateFlow(1f)
     private val audioFocusVolumeMultiplier = MutableStateFlow(1f)
 
@@ -379,8 +395,9 @@ class MusicService :
         muted: Boolean = isMuted.value,
         sleepTimerMultiplier: Float = sleepTimerVolumeMultiplier.value,
         focusMultiplier: Float = audioFocusVolumeMultiplier.value,
+        onTv: Boolean = tvMuted.value,
     ): Float {
-        if (muted) return 0f
+        if (muted || onTv) return 0f
         return (volume * sleepTimerMultiplier * focusMultiplier).coerceIn(0f, 1f)
     }
 
@@ -846,12 +863,14 @@ class MusicService :
             isMuted,
             sleepTimerVolumeMultiplier,
             audioFocusVolumeMultiplier,
-        ) { volume, muted, timerMultiplier, focusMultiplier ->
+            tvMuted,
+        ) { volume, muted, timerMultiplier, focusMultiplier, onTv ->
             calculateEffectiveVolume(
                 volume = volume,
                 muted = muted,
                 sleepTimerMultiplier = timerMultiplier,
                 focusMultiplier = focusMultiplier,
+                onTv = onTv,
             )
         }.collectLatest(scope) {
             if (!isCrossfading) {
@@ -4281,6 +4300,8 @@ class MusicService :
 
     override fun onDestroy() {
         isRunning = false
+        runCatching { tvLinkInstance?.release() }
+        tvLinkInstance = null
 
         if (!::player.isInitialized) {
             try {
@@ -4781,6 +4802,27 @@ class MusicService :
         widgetUpdateJob?.cancel()
         widgetUpdateJob = null
     }
+
+    /** Leve TV: link do áudio + cabeçalhos para a TV tocar a mesma música. */
+    suspend fun playbackForTv(mediaId: String): InnerTubeXPlayer.PlaybackData? =
+        withContext(Dispatchers.IO) {
+            try {
+                val song = database.songEntity(mediaId)
+                InnerTubeXPlayer
+                    .playerResponseForPlayback(
+                        videoId = mediaId,
+                        audioQuality = audioQuality,
+                        connectivityManager = connectivityManager,
+                        contentHints = ContentHints(
+                            isExplicit = song?.explicit,
+                            isUploaded = song?.isUploaded,
+                        ),
+                    ).getOrNull()
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "Leve TV: falha ao resolver $mediaId")
+                null
+            }
+        }
 
     /**
      * Get the stream URL for a given media ID.

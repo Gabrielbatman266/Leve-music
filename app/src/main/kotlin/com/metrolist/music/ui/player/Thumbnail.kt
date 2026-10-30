@@ -595,6 +595,16 @@ private fun ThumbnailItem(
                     .padding(8.dp),
                 tintColor = textBackgroundColor
             )
+
+            // Leve TV: tocar no Leve Launcher TV (só na capa da música atual)
+            if (item.mediaId == currentMediaId) {
+                com.metrolist.music.ui.component.LeveTvButton(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp),
+                    tintColor = textBackgroundColor
+                )
+            }
         }
     }
 }
