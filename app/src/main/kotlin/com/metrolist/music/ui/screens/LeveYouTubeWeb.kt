@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -253,6 +255,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
     var sleepMinutes by remember { mutableStateOf(0) }
     var votes by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    var searchOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { playerConnection?.player?.pause() }
 
@@ -448,7 +451,8 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                 (webView.parent as? ViewGroup)?.removeView(webView)
                 webView
             },
-            modifier = Modifier.fillMaxSize(),
+            // Não fica embaixo da barra de notificação
+            modifier = Modifier.fillMaxSize().windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.statusBars),
         )
 
         // Barrinha de carregamento fina no topo
@@ -459,6 +463,21 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                 trackColor = Color.Transparent,
                 modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
             )
+        }
+
+        // Botão de busca grande, embaixo (fácil de alcançar com o dedo)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 70.dp, bottom = 150.dp)
+                .alpha(0.85f)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0xEE202020))
+                .clickable { searchOpen = true }
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+        ) {
+            Text("🔍  Buscar", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
         // Engrenagem discreta (meio transparente)
@@ -564,6 +583,51 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                 }
             }
         }
+    }
+
+    if (searchOpen) {
+        var query by remember { mutableStateOf("") }
+        val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+        fun go() {
+            val q = query.trim()
+            if (q.isNotEmpty()) {
+                webView.loadUrl("https://m.youtube.com/results?search_query=" + java.net.URLEncoder.encode(q, "UTF-8"))
+            }
+            searchOpen = false
+        }
+        Dialog(onDismissRequest = { searchOpen = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF181818))
+                    .padding(18.dp),
+            ) {
+                Text("Buscar no YouTube", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                androidx.compose.material3.OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp, color = Color.White),
+                    placeholder = { Text("O que você quer ver?", fontSize = 16.sp) },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { go() }),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).focusRequester(focus),
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(top = 14.dp),
+                ) {
+                    WebChip("Buscar", highlighted = true) { go() }
+                    WebChip("Início do YouTube") {
+                        webView.loadUrl("https://m.youtube.com/")
+                        searchOpen = false
+                    }
+                    WebChip("Cancelar") { searchOpen = false }
+                }
+            }
+        }
+        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     }
 
     // Tela cheia de verdade: sem barra de notificação e sem botões do sistema
