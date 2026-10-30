@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -88,6 +89,7 @@ private fun LeveTvDialog(
     val found by link.found.collectAsState()
     val state by link.state.collectAsState()
     val scope = rememberCoroutineScope()
+    val uriHandler = LocalUriHandler.current
     var ip by remember { mutableStateOf(link.lastTv?.host.orEmpty()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -154,6 +156,17 @@ private fun LeveTvDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+
+                // Mouse e teclado: página servida pelo próprio Leve Launcher TV
+                val controlHost = connected?.host ?: found.firstOrNull()?.host ?: ip.trim().ifBlank { null }
+                if (controlHost != null) {
+                    OutlinedButton(
+                        onClick = {
+                            runCatching { uriHandler.openUri("http://$controlHost:${LeveTvLink.PORT}/") }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Controle da TV (mouse e teclado)") }
                 }
             }
         },
