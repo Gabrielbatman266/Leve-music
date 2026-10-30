@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.rememberScrollState
@@ -452,7 +454,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                 webView
             },
             // Não fica embaixo da barra de notificação
-            modifier = Modifier.fillMaxSize().windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.statusBars),
+            modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
         )
 
         // Barrinha de carregamento fina no topo
