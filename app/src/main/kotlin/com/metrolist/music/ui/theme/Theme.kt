@@ -14,6 +14,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.SaverScope
@@ -36,10 +37,18 @@ fun MetrolistTheme(
     content: @Composable () -> Unit,
 ) {
     // Leve Music: tema fixo escuro no estilo Spotify (sem cálculo de cor dinâmica = mais leve)
-    MaterialTheme(
-        colorScheme = if (pureBlack) LeveColorScheme.pureBlack(true) else LeveColorScheme,
-        content = content,
-    )
+    // Leve Music: tamanho de letra escolhido pelo usuário vale pro app inteiro
+    val fontScale by com.metrolist.music.utils.rememberPreference(com.metrolist.music.utils.LeveFontScaleKey, 1f)
+    val baseDensity = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalDensity provides
+            androidx.compose.ui.unit.Density(baseDensity.density, baseDensity.fontScale * fontScale),
+    ) {
+        MaterialTheme(
+            colorScheme = if (pureBlack) LeveColorScheme.pureBlack(true) else LeveColorScheme,
+            content = content,
+        )
+    }
 }
 
 private val LeveGreen = Color(0xFF1DB954)

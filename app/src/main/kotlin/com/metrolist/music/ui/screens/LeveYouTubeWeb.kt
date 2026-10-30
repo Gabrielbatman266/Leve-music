@@ -243,6 +243,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
     var sponsor by rememberPreference(WebSponsorKey, true)
     var theme by rememberPreference(WebThemeKey, "escuro")
     var hideShorts by rememberPreference(WebShortsKey, true)
+    var textZoom by rememberPreference(com.metrolist.music.utils.LeveWebTextZoomKey, 100)
     var loop by remember { mutableStateOf(false) }
     var currentUrl by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf(0) }
@@ -361,6 +362,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
     }
 
     LaunchedEffect(speed, sponsor, theme, hideShorts) { injectPage() }
+    LaunchedEffect(textZoom) { webView.settings.textZoom = textZoom }
     LaunchedEffect(loop) { js("var v=document.querySelector('video'); if(v) v.loop=$loop;") }
 
     val currentVideo = videoIdOf(currentUrl)
@@ -513,6 +515,11 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                     WebChip(if (sponsor) "SponsorBlock ✓" else "SponsorBlock", highlighted = sponsor) { sponsor = !sponsor }
                     WebChip(if (hideShorts) "Sem Shorts ✓" else "Mostrar Shorts", highlighted = hideShorts) { hideShorts = !hideShorts }
                     WebChip("Anúncios bloqueados ✓", highlighted = true) {}
+                }
+                MenuSection("Tamanho do texto") {
+                    com.metrolist.music.utils.LeveWebTextZoomOptions.forEach { (value, label) ->
+                        WebChip(label, highlighted = textZoom == value) { textZoom = value }
+                    }
                 }
                 MenuSection("Tema") {
                     listOf("escuro" to "Escuro", "preto" to "Preto (AMOLED)", "claro" to "Claro").forEach { (key, label) ->

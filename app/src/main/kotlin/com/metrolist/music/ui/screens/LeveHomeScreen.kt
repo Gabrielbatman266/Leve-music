@@ -653,6 +653,34 @@ fun LeveHomeScreen(
                 }
             }
 
+            item(key = "font_size") {
+                var appFontScale by rememberPreference(com.metrolist.music.utils.LeveFontScaleKey, 1f)
+                Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 28.dp)) {
+                    Text("Tamanho da letra", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("Vale pro app inteiro", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    ) {
+                        com.metrolist.music.utils.LeveFontScaleOptions.forEach { (value, label) ->
+                            val selected = appFontScale == value
+                            Text(
+                                text = label,
+                                fontSize = 13.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (selected) SpotifyGreen else MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .clickable { appFontScale = value }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
             item(key = "update_check") {
                 Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 28.dp)) {
                     Text(
