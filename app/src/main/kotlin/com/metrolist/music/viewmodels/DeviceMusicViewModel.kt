@@ -34,6 +34,7 @@ enum class DeviceTab(val label: String) {
     ARTISTS("Artistas"),
     ALBUMS("Álbuns"),
     FOLDERS("Pastas"),
+    AUDIOS("Áudios"),
 }
 
 data class DeviceGroup(
@@ -64,7 +65,7 @@ fun List<LocalSong>.groupedBy(tab: DeviceTab): List<DeviceGroup> {
             DeviceTab.ARTISTS -> { s -> s.artist }
             DeviceTab.ALBUMS -> { s -> s.album }
             DeviceTab.FOLDERS -> { s -> s.folder }
-            DeviceTab.SONGS -> { _ -> "" }
+            DeviceTab.SONGS, DeviceTab.AUDIOS -> { _ -> "" }
         }
     return groupBy(key)
         .map { (name, songs) ->
@@ -94,5 +95,19 @@ class DeviceMusicViewModel @Inject constructor(
             songs.value = runCatching { LocalMusic.load(context) }.getOrDefault(emptyList())
             isLoading.value = false
         }
+    }
+}
+
+/** "Hoje", "Ontem", "Esta semana" ou "novembro de 2026" — usado nos áudios. */
+fun dateLabel(epochSec: Long): String {
+    val zone = java.time.ZoneId.systemDefault()
+    val date = java.time.Instant.ofEpochSecond(epochSec).atZone(zone).toLocalDate()
+    val today = java.time.LocalDate.now(zone)
+    return when {
+        date == today -> "Hoje"
+        date == today.minusDays(1) -> "Ontem"
+        date.isAfter(today.minusDays(7)) -> "Esta semana"
+        else -> date.format(java.time.format.DateTimeFormatter.ofPattern("MMMM 'de' yyyy", java.util.Locale.forLanguageTag("pt-BR")))
+            .replaceFirstChar { it.uppercase() }
     }
 }

@@ -11,6 +11,14 @@ import android.provider.MediaStore
 import androidx.core.net.toUri
 import com.metrolist.music.models.MediaMetadata
 
+/** O que é o arquivo de áudio: música de verdade ou áudio do dia a dia. */
+enum class AudioKind(val label: String) {
+    MUSIC("Música"),
+    WHATSAPP("WhatsApp"),
+    RECORDING("Gravações"),
+    OTHER("Toques e outros"),
+}
+
 data class LocalSong(
     val mediaStoreId: Long,
     val title: String,
@@ -23,6 +31,7 @@ data class LocalSong(
     val folder: String,
     val year: Int,
     val track: Int,
+    val kind: AudioKind = AudioKind.MUSIC,
 ) {
     val id: String get() = LocalMusic.ID_PREFIX + mediaStoreId
     val artworkUri: String get() = LocalMusic.albumArtUri(albumId)
@@ -68,6 +77,20 @@ object LocalMusic {
                 android.Manifest.permission.READ_EXTERNAL_STORAGE
             }
 
+    private fun classify(path: String, isMusic: Boolean, durationMs: Long): AudioKind {
+        val p = path.lowercase()
+        return when {
+            "whatsapp" in p -> AudioKind.WHATSAPP
+            listOf("/recordings", "/record", "call", "voice recorder", "sound_recorder", "soundrecorder", "gravações", "gravador")
+                .any { it in p } -> AudioKind.RECORDING
+            listOf("/ringtones", "/notifications", "/alarms", "/ui/", "/telegram", "/android/media")
+                .any { it in p } -> AudioKind.OTHER
+            !isMusic && durationMs < 60_000 -> AudioKind.OTHER
+            durationMs < 20_000 -> AudioKind.OTHER
+            else -> AudioKind.MUSIC
+        }
+    }
+
     /** Uma única consulta ao MediaStore, só com as colunas necessárias. */
     fun load(context: Context): List<LocalSong> {
         val projection =
@@ -83,8 +106,10 @@ object LocalMusic {
                 MediaStore.Audio.Media.DATA,
                 MediaStore.Audio.Media.YEAR,
                 MediaStore.Audio.Media.TRACK,
+                MediaStore.Audio.Media.IS_MUSIC,
             )
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} >= 20000"
+        // Lê todo áudio com mais de 1s e separa depois: músicas x WhatsApp x gravações x toques
+        val selection = "${MediaStore.Audio.Media.DURATION} >= 1000"
         val result = ArrayList<LocalSong>()
         context.contentResolver.query(
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
@@ -104,6 +129,7 @@ object LocalMusic {
             val dataCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
             val yearCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
             val trackCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+            val isMusicCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.IS_MUSIC)
             while (c.moveToNext()) {
                 val path = c.getString(dataCol).orEmpty()
                 val artist = c.getString(artistCol)?.takeUnless { it.isBlank() || it == "<unknown>" } ?: UNKNOWN_ARTIST
@@ -121,6 +147,7 @@ object LocalMusic {
                         folder = path.substringBeforeLast('/', "").substringAfterLast('/').ifBlank { "Outros" },
                         year = c.getInt(yearCol),
                         track = c.getInt(trackCol) % 1000,
+                        kind = classify(path, c.getInt(isMusicCol) != 0, c.getLong(durationCol)),
                     )
             }
         }

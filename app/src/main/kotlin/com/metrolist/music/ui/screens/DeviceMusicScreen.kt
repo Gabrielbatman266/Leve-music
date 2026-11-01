@@ -171,23 +171,37 @@ fun DeviceMusicScreen(
     }
 
     // Filtro de busca + ordenação feitos em memória (instantâneo)
+    var audioKindName by rememberSaveable { mutableStateOf<String?>(null) }
+    val audioKind = audioKindName?.let { runCatching { com.metrolist.music.utils.AudioKind.valueOf(it) }.getOrNull() }
+    // Músicas de verdade x áudios do dia a dia (WhatsApp, gravações, toques)
     val filtered =
-        remember(allSongs, query) {
+        remember(allSongs, query, tab, audioKind) {
             val q = query.trim().lowercase()
-            val base = allSongs.orEmpty()
+            val base =
+                allSongs.orEmpty().filter { song ->
+                    if (tab == DeviceTab.AUDIOS) {
+                        song.kind != com.metrolist.music.utils.AudioKind.MUSIC && (audioKind == null || song.kind == audioKind)
+                    } else {
+                        song.kind == com.metrolist.music.utils.AudioKind.MUSIC
+                    }
+                }
             if (q.isEmpty()) base else base.filter { it.titleKey.contains(q) || it.artistKey.contains(q) || it.albumKey.contains(q) }
         }
-    val groups = remember(filtered, tab) { if (tab == DeviceTab.SONGS) emptyList() else filtered.groupedBy(tab) }
+    val groups =
+        remember(filtered, tab) {
+            if (tab == DeviceTab.SONGS || tab == DeviceTab.AUDIOS) emptyList() else filtered.groupedBy(tab)
+        }
     val selectedGroup: DeviceGroup? = openGroup?.let { name -> groups.firstOrNull { it.name == name } }
     val visibleSongs: List<LocalSong> =
         remember(filtered, sort, tab, selectedGroup) {
             when {
                 selectedGroup != null -> selectedGroup.songs
                 tab == DeviceTab.SONGS -> filtered.sortedForDevice(sort)
+                tab == DeviceTab.AUDIOS -> filtered.sortedByDescending { it.dateAddedSec }
                 else -> emptyList()
             }
         }
-    val showingSongs = tab == DeviceTab.SONGS || selectedGroup != null
+    val showingSongs = tab == DeviceTab.SONGS || tab == DeviceTab.AUDIOS || selectedGroup != null
     val currentId = mediaMetadata?.id
 
     fun play(songs: List<LocalSong>, index: Int, title: String) {
@@ -321,6 +335,50 @@ fun DeviceMusicScreen(
                 }
             }
 
+            if (tab == DeviceTab.AUDIOS) {
+                item(key = "audio_kinds") {
+                    val counts =
+                        allSongs.orEmpty()
+                            .filter { it.kind != com.metrolist.music.utils.AudioKind.MUSIC }
+                            .groupingBy { it.kind }
+                            .eachCount()
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                        Text(
+                            "Áudios do WhatsApp, gravações e toques ficam aqui, longe das suas músicas.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        ) {
+                            val options =
+                                listOf<Pair<com.metrolist.music.utils.AudioKind?, String>>(null to "Todos") +
+                                    listOf(
+                                        com.metrolist.music.utils.AudioKind.WHATSAPP,
+                                        com.metrolist.music.utils.AudioKind.RECORDING,
+                                        com.metrolist.music.utils.AudioKind.OTHER,
+                                    ).map { it to "${it.label} (${counts[it] ?: 0})" }
+                            options.forEach { (kind, label) ->
+                                val selected = kind == audioKind
+                                Text(
+                                    text = label,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh)
+                                        .clickable { audioKindName = kind?.name }
+                                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Cabeçalho: contagem, duração, ordenar, tocar/aleatório
             item(key = "header") {
                 val headerTitle = selectedGroup?.name ?: tab.label
@@ -420,8 +478,21 @@ fun DeviceMusicScreen(
             }
 
             if (showingSongs) {
-                val title = selectedGroup?.name ?: "No celular"
+                val title = selectedGroup?.name ?: if (tab == DeviceTab.AUDIOS) "Áudios" else "No celular"
                 itemsIndexed(visibleSongs, key = { _, s -> s.mediaStoreId }) { index, song ->
+                    if (tab == DeviceTab.AUDIOS) {
+                        val label = com.metrolist.music.viewmodels.dateLabel(song.dateAddedSec)
+                        val previous = visibleSongs.getOrNull(index - 1)?.let { com.metrolist.music.viewmodels.dateLabel(it.dateAddedSec) }
+                        if (label != previous) {
+                            Text(
+                                label,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 4.dp),
+                            )
+                        }
+                    }
                     LocalSongRow(
                         song = song,
                         active = song.id == currentId,
