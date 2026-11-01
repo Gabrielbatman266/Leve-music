@@ -386,14 +386,36 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
             }
     }
 
+    // Tela cheia rápida: o vídeo fica na MESMA janela (por cima de tudo), sem recriar a imagem
     DisposableEffect(fullscreenView) {
-        val on = fullscreenView != null
-        activity?.requestedOrientation =
-            if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        setSystemBarsHidden(activity?.window, on)
+        val view = fullscreenView
+        val decor = activity?.window?.decorView as? ViewGroup
+        var holder: FrameLayout? = null
+        if (view != null && decor != null) {
+            holder =
+                FrameLayout(context).apply {
+                    setBackgroundColor(android.graphics.Color.BLACK)
+                    (view.parent as? ViewGroup)?.removeView(view)
+                    addView(view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+                }
+            decor.addView(holder, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                activity.window.attributes = activity.window.attributes.apply {
+                    layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+            setSystemBarsHidden(activity.window, true)
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
         onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            setSystemBarsHidden(activity?.window, false)
+            holder?.let { h ->
+                h.removeAllViews()
+                decor?.removeView(h)
+            }
+            if (view != null) {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                setSystemBarsHidden(activity?.window, false)
+            }
         }
     }
 
@@ -656,42 +678,6 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
         LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     }
 
-    // Tela cheia de verdade: sem barra de notificação e sem botões do sistema
-    fullscreenView?.let { view ->
-        Dialog(
-            onDismissRequest = {
-                fullscreenCallback?.onCustomViewHidden()
-                fullscreenView = null
-            },
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-        ) {
-            val dialogWindow = (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
-            LaunchedEffect(dialogWindow) {
-                dialogWindow?.let { w ->
-                    w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                    w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK))
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                        w.attributes = w.attributes.apply {
-                            layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                        }
-                    }
-                    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(w, false)
-                    setSystemBarsHidden(w, true)
-                }
-            }
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-                AndroidView(
-                    factory = { ctx ->
-                        FrameLayout(ctx).apply {
-                            (view.parent as? ViewGroup)?.removeView(view)
-                            addView(view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-    }
 }
 
 @Composable
