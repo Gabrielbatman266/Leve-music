@@ -58,6 +58,55 @@ object LeveYouTubeSearch {
     /** Filtro "falso" usado só pela tela de busca para identificar a aba "YouTube". */
     val FILTER_ALL_YOUTUBE = YouTube.SearchFilter("leve_all_youtube")
 
+    /** Filtro "falso" para a aba "Canais do YouTube" (qualquer canal, de qualquer gênero). */
+    val FILTER_YT_CHANNELS = YouTube.SearchFilter("leve_yt_channels")
+
+    private const val CHANNELS_ONLY_PARAMS = "EgIQAg=="
+
+    suspend fun searchChannels(query: String): Result<Pair<List<com.metrolist.innertube.models.ArtistItem>, String?>> =
+        runCatching {
+            val root = post("search") {
+                put("query", query)
+                put("params", CHANNELS_ONLY_PARAMS)
+            }
+            parseChannels(root) to findContinuation(root)
+        }
+
+    suspend fun channelsContinuation(token: String): Result<Pair<List<com.metrolist.innertube.models.ArtistItem>, String?>> =
+        runCatching {
+            val root = post("search") { put("continuation", token) }
+            parseChannels(root) to findContinuation(root)
+        }
+
+    private fun parseChannels(root: JsonElement): List<com.metrolist.innertube.models.ArtistItem> {
+        val out = mutableListOf<com.metrolist.innertube.models.ArtistItem>()
+        walk(root) { key, value ->
+            val obj = value as? JsonObject
+            if (key == "channelRenderer" && obj != null) {
+                val id = obj.str("channelId")
+                val title = obj.firstRunText("title")
+                if (id != null && title != null) {
+                    var thumb =
+                        ((obj.obj("thumbnail")?.get("thumbnails") as? JsonArray)?.lastOrNull() as? JsonObject)?.str("url")
+                    if (thumb != null && thumb.startsWith("//")) thumb = "https:$thumb"
+                    out +=
+                        com.metrolist.innertube.models.ArtistItem(
+                            id = id,
+                            title = title,
+                            thumbnail = thumb,
+                            channelId = id,
+                            shuffleEndpoint = null,
+                            radioEndpoint = null,
+                        )
+                }
+                true
+            } else {
+                false
+            }
+        }
+        return out.distinctBy { it.id }
+    }
+
     /** Marca usada nos itens que vêm do YouTube normal (não do YouTube Music). */
     const val UGC_TYPE = "MUSIC_VIDEO_TYPE_UGC"
 

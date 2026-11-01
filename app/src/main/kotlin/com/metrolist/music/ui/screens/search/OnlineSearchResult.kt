@@ -334,7 +334,12 @@ fun OnlineSearchResult(
                                 }
 
                                 is ArtistItem -> {
-                                    navController.navigate("artist/${item.id}")
+                                    // Canais do YouTube "normal" abrem na tela de canal do Leve
+                                    if (viewModel.filter.value == com.metrolist.music.utils.LeveYouTubeSearch.FILTER_YT_CHANNELS) {
+                                        navController.navigate("leve_channel/${item.id}")
+                                    } else {
+                                        navController.navigate("artist/${item.id}")
+                                    }
                                 }
 
                                 is PlaylistItem -> {
@@ -461,6 +466,7 @@ fun OnlineSearchResult(
                         null to stringResource(R.string.filter_all),
                         FILTER_SONG to stringResource(R.string.filter_songs),
                         com.metrolist.music.utils.LeveYouTubeSearch.FILTER_ALL_YOUTUBE to "Todo o YouTube",
+                        com.metrolist.music.utils.LeveYouTubeSearch.FILTER_YT_CHANNELS to "Canais do YouTube",
                     ).let { baseChips ->
                         if (!hideVideoSongs) {
                             baseChips + (FILTER_VIDEO to stringResource(R.string.filter_videos))

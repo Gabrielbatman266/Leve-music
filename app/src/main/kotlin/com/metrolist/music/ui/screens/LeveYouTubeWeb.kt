@@ -467,19 +467,19 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
             )
         }
 
-        // Botão de busca grande, embaixo (fácil de alcançar com o dedo)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        // Lupa pequena e discreta, logo acima da engrenagem
+        Box(
+            contentAlignment = Alignment.Center,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 70.dp, bottom = 150.dp)
-                .alpha(0.85f)
-                .clip(RoundedCornerShape(50))
-                .background(Color(0xEE202020))
-                .clickable { searchOpen = true }
-                .padding(horizontal = 18.dp, vertical = 12.dp),
+                .padding(end = 14.dp, bottom = 206.dp)
+                .alpha(0.45f)
+                .size(46.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(Color(0xCC202020))
+                .clickable { searchOpen = true },
         ) {
-            Text("🔍  Buscar", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("🔍", fontSize = 18.sp, color = Color.White)
         }
 
         // Engrenagem discreta (meio transparente)
@@ -589,13 +589,17 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
 
     if (searchOpen) {
         var query by remember { mutableStateOf("") }
+        var filter by remember { mutableStateOf(YtSearchFilters.first()) }
         val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+        fun search(q: String, sp: String) {
+            val url = "https://m.youtube.com/results?search_query=" + java.net.URLEncoder.encode(q, "UTF-8") +
+                (if (sp.isNotEmpty()) "&sp=$sp" else "")
+            webView.loadUrl(url)
+            searchOpen = false
+        }
         fun go() {
             val q = query.trim()
-            if (q.isNotEmpty()) {
-                webView.loadUrl("https://m.youtube.com/results?search_query=" + java.net.URLEncoder.encode(q, "UTF-8"))
-            }
-            searchOpen = false
+            if (q.isNotEmpty()) search(q, filter.second) else searchOpen = false
         }
         Dialog(onDismissRequest = { searchOpen = false }) {
             Column(
@@ -616,9 +620,25 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { go() }),
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp).focusRequester(focus),
                 )
+                Text("Filtro", fontSize = 12.sp, color = Color(0xFFB3B3B3), modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                ) {
+                    YtSearchFilters.forEach { f -> WebChip(f.first, highlighted = filter == f) { filter = f } }
+                }
+                Text("Canais por gênero", fontSize = 12.sp, color = Color(0xFFB3B3B3), modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+                YtGenres.chunked(4).forEach { row ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 8.dp),
+                    ) {
+                        row.forEach { (label, q) -> WebChip(label) { search(q, YtChannelsOnly) } }
+                    }
+                }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.padding(top = 14.dp),
+                    modifier = Modifier.padding(top = 6.dp),
                 ) {
                     WebChip("Buscar", highlighted = true) { go() }
                     WebChip("Início do YouTube") {
@@ -706,3 +726,27 @@ private fun WebChip(label: String, highlighted: Boolean = false, onClick: () -> 
             .padding(horizontal = 14.dp, vertical = 9.dp),
     )
 }
+
+/** Filtros da busca do YouTube (parâmetro sp). */
+private val YtSearchFilters =
+    listOf(
+        "Tudo" to "",
+        "Vídeos" to "EgIQAQ%3D%3D",
+        "Canais" to "EgIQAg%3D%3D",
+        "Playlists" to "EgIQAw%3D%3D",
+        "Ao vivo" to "EgJAAQ%3D%3D",
+        "Longos (+20 min)" to "EgIYAg%3D%3D",
+        "Desta semana" to "EgIIAw%3D%3D",
+        "De hoje" to "EgIIAg%3D%3D",
+    )
+
+private const val YtChannelsOnly = "EgIQAg%3D%3D"
+
+/** Atalhos de canais por gênero (busca só canais). */
+private val YtGenres =
+    listOf(
+        "ASMR" to "asmr", "Games" to "gameplay jogos", "Podcasts" to "podcast", "Humor" to "humor comédia",
+        "Ciência" to "ciência curiosidades", "Tecnologia" to "tecnologia celular", "Culinária" to "receitas culinária", "Esportes" to "futebol esportes",
+        "Notícias" to "notícias", "Filmes e séries" to "filmes séries análise", "Anime" to "anime", "Educação" to "aulas educação",
+        "Infantil" to "desenho infantil", "Vlogs" to "vlog", "Fitness" to "treino academia", "Dormir/relaxar" to "sons para dormir relaxar",
+    )

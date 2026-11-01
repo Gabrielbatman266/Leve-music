@@ -121,6 +121,15 @@ constructor(
             filter.collect { filter ->
                 if (filter == null) {
                     loadSummaryPage()
+                } else if (filter == LeveYouTubeSearch.FILTER_YT_CHANNELS) {
+                    if (viewStateMap[filter.value] == null) {
+                        LeveYouTubeSearch.searchChannels(query)
+                            .onSuccess { (items, token) -> viewStateMap[filter.value] = ItemsPage(items, token) }
+                            .onFailure {
+                                reportException(it)
+                                viewStateMap[filter.value] = ItemsPage(emptyList(), null)
+                            }
+                    }
                 } else if (filter == LeveYouTubeSearch.FILTER_ALL_YOUTUBE) {
                     if (viewStateMap[filter.value] == null) {
                         LeveYouTubeSearch.search(query)
@@ -181,6 +190,11 @@ constructor(
         viewModelScope.launch {
             val viewState = viewStateMap[filterValue] ?: return@launch
             val continuation = viewState.continuation ?: return@launch
+            if (currentFilter == LeveYouTubeSearch.FILTER_YT_CHANNELS) {
+                val (items, token) = LeveYouTubeSearch.channelsContinuation(continuation).getOrNull() ?: return@launch
+                viewStateMap[filterValue] = ItemsPage((viewState.items + items).distinctBy { it.id }, token)
+                return@launch
+            }
             if (currentFilter == LeveYouTubeSearch.FILTER_ALL_YOUTUBE) {
                 val page = LeveYouTubeSearch.continuation(continuation).getOrNull() ?: return@launch
                 viewStateMap[filterValue] = ItemsPage(
