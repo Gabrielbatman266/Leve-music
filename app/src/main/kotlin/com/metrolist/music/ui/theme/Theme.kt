@@ -44,8 +44,10 @@ fun MetrolistTheme(
         androidx.compose.ui.platform.LocalDensity provides
             androidx.compose.ui.unit.Density(baseDensity.density, baseDensity.fontScale * fontScale),
     ) {
+        val themeKey by com.metrolist.music.utils.rememberPreference(com.metrolist.music.utils.LeveThemeKey, "spotify")
+        val scheme = remember(themeKey) { leveSchemeFor(com.metrolist.music.utils.leveThemeFor(themeKey)) }
         MaterialTheme(
-            colorScheme = if (pureBlack) LeveColorScheme.pureBlack(true) else LeveColorScheme,
+            colorScheme = if (pureBlack) scheme.pureBlack(true) else scheme,
             content = content,
         )
     }
@@ -120,4 +122,33 @@ fun ColorScheme.pureBlack(apply: Boolean) =
 val ColorSaver = object : Saver<Color, Int> {
     override fun restore(value: Int): Color = Color(value)
     override fun SaverScope.save(value: Color): Int = value.toArgb()
+}
+
+
+/** Monta as cores do tema escolhido em Ajustes. */
+fun leveSchemeFor(t: com.metrolist.music.utils.LeveThemeOption): ColorScheme {
+    val bg = Color(t.background)
+    val card = Color(t.card)
+    val accent = Color(t.accent)
+    val onAccent = if (t.onAccentWhite) Color.White else Color.Black
+    return LeveColorScheme.copy(
+        primary = accent,
+        onPrimary = onAccent,
+        primaryContainer = accent,
+        onPrimaryContainer = onAccent,
+        tertiary = accent,
+        onTertiary = onAccent,
+        background = bg,
+        surface = bg,
+        surfaceTint = bg,
+        surfaceContainer = bg,
+        surfaceContainerLowest = bg,
+        surfaceContainerLow = card.copy(alpha = 1f).let { androidx.compose.ui.graphics.lerp(bg, it, 0.5f) },
+        surfaceContainerHigh = card,
+        surfaceContainerHighest = androidx.compose.ui.graphics.lerp(card, Color.White, 0.06f),
+        secondaryContainer = card,
+        surfaceVariant = card,
+        surfaceBright = card,
+        surfaceDim = bg,
+    )
 }

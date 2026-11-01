@@ -115,6 +115,10 @@ fun NavGraphBuilder.navigationBuilder(
         LeveYouTubeWebScreen(startVideoId = null)
     }
 
+    composable("leve_settings") {
+        LeveSettingsScreen()
+    }
+
     composable("leve_channel/{id}") { backStackEntry ->
         LeveChannelScreen(channelId = backStackEntry.arguments?.getString("id").orEmpty())
     }

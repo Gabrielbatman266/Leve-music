@@ -80,7 +80,6 @@ import com.metrolist.music.viewmodels.LeveHomeViewModel
 import java.time.LocalTime
 import kotlinx.coroutines.launch
 
-private val SpotifyGreen = Color(0xFF1DB954)
 
 private data class CardData(
     val id: String,
@@ -303,11 +302,16 @@ fun LeveHomeScreen(
         )
     }
 
+    val themeKey by rememberPreference(com.metrolist.music.utils.LeveThemeKey, "spotify")
+    val themeOption = com.metrolist.music.utils.leveThemeFor(themeKey)
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = viewModel::refresh,
         modifier = Modifier.fillMaxSize(),
     ) {
+        if (themeOption.animated) {
+            com.metrolist.music.ui.component.LeveAnimatedBackground(accent = MaterialTheme.colorScheme.primary)
+        }
         LazyColumn(
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             modifier = Modifier.fillMaxSize(),
@@ -320,31 +324,47 @@ fun LeveHomeScreen(
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(SpotifyGreen)
+                            .background(MaterialTheme.colorScheme.primary)
                             .clickable { startUpdate(update) }
                             .padding(14.dp),
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Atualização disponível: #${update.build}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                            Text("Atualização disponível: #${update.build}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
                             Text(
                                 updateProgress?.let { "Baixando… ${(it * 100).toInt()}%" } ?: (updateStatus ?: "Você está na #${com.metrolist.music.utils.LeveUpdater.currentBuild}. Toque pra atualizar"),
                                 fontSize = 12.sp,
-                                color = Color.Black,
+                                color = MaterialTheme.colorScheme.onPrimary,
                             )
                         }
-                        Text("Atualizar", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        Text("Atualizar", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
             }
 
             item(key = "greeting") {
-                Text(
-                    text = greeting,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 12.dp),
+                ) {
+                    Text(
+                        text = greeting,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    // Ajustes (tema, letra, downloads, atualização)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .clickable { navController.navigate("leve_settings") },
+                    ) {
+                        Text("⚙", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
             }
 
             // Categorias: deslize pro lado
@@ -355,27 +375,16 @@ fun LeveHomeScreen(
                         .horizontalScroll(rememberScrollState())
                         .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                 ) {
-                    Text(
-                        text = "▶ YouTube",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0xFFE53935))
-                            .combinedClickable(onClick = { navController.navigate("leve_youtube") })
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                    )
                     HomeCategory.entries.forEach { cat ->
                         val selected = cat == category
                         Text(
                             text = cat.label,
                             fontSize = 13.sp,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
+                            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(if (selected) SpotifyGreen else MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh)
                                 .combinedClickable(onClick = { categoryName = cat.name })
                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                         )
@@ -536,7 +545,7 @@ fun LeveHomeScreen(
                         Spacer(Modifier.height(16.dp))
                         Button(
                             onClick = { navController.navigate(Screens.Search.route) },
-                            colors = ButtonDefaults.buttonColors(containerColor = SpotifyGreen, contentColor = Color.Black),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
                         ) {
                             Text("Pesquisar", fontWeight = FontWeight.Bold)
                         }
@@ -630,10 +639,10 @@ fun LeveHomeScreen(
                             text = "+ Ocultar tema",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.Black,
+                            color = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(SpotifyGreen)
+                                .background(MaterialTheme.colorScheme.primary)
                                 .clickable { showHideDialog = true }
                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                         )
@@ -648,61 +657,6 @@ fun LeveHomeScreen(
                                     .clickable { unhideTopic(topic) }
                                     .padding(horizontal = 14.dp, vertical = 8.dp),
                             )
-                        }
-                    }
-                }
-            }
-
-            item(key = "font_size") {
-                var appFontScale by rememberPreference(com.metrolist.music.utils.LeveFontScaleKey, 1f)
-                Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 28.dp)) {
-                    Text("Tamanho da letra", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                    Text("Vale pro app inteiro", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    ) {
-                        com.metrolist.music.utils.LeveFontScaleOptions.forEach { (value, label) ->
-                            val selected = appFontScale == value
-                            Text(
-                                text = label,
-                                fontSize = 13.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .background(if (selected) SpotifyGreen else MaterialTheme.colorScheme.surfaceContainerHigh)
-                                    .clickable { appFontScale = value }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                            )
-                        }
-                    }
-                }
-            }
-
-            item(key = "update_check") {
-                Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 28.dp)) {
-                    Text(
-                        "Leve Music #${com.metrolist.music.utils.LeveUpdater.currentBuild}",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Verificar atualização",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .clickable { checkUpdateNow() }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                    )
-                    if (availableUpdate == null) {
-                        updateStatus?.let {
-                            Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
                         }
                     }
                 }
@@ -762,7 +716,7 @@ private fun QuickTile(
             fontWeight = FontWeight.Bold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            color = if (active) SpotifyGreen else MaterialTheme.colorScheme.onSurface,
+            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(horizontal = 8.dp),
         )
     }
@@ -824,7 +778,7 @@ private fun CardRow(
             }
             IconButton(
                 onClick = onShuffle,
-                colors = IconButtonDefaults.iconButtonColors(containerColor = SpotifyGreen, contentColor = Color.Black),
+                colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
                 modifier = Modifier.size(40.dp),
             ) {
                 Icon(
@@ -861,7 +815,7 @@ private fun CardRow(
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = if (card.id == currentId) SpotifyGreen else MaterialTheme.colorScheme.onSurface,
+                        color = if (card.id == currentId) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
                         text = card.subtitle,
@@ -925,18 +879,18 @@ private fun MixRow(
                                 .align(Alignment.BottomStart)
                                 .fillMaxWidth()
                                 .height(6.dp)
-                                .background(SpotifyGreen),
+                                .background(MaterialTheme.colorScheme.primary),
                         )
                         Text(
                             text = "MIX",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.Black,
+                            color = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier
                                 .align(Alignment.TopStart)
                                 .padding(6.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(SpotifyGreen)
+                                .background(MaterialTheme.colorScheme.primary)
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                         )
                         Text(
@@ -973,7 +927,7 @@ private fun MixRow(
                             text = "Salvar",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = SpotifyGreen,
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
                                 .combinedClickable(onClick = { onSave(mix) })

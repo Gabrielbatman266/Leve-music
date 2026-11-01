@@ -85,7 +85,6 @@ import com.metrolist.music.viewmodels.DeviceTab
 import com.metrolist.music.viewmodels.groupedBy
 import com.metrolist.music.viewmodels.sortedForDevice
 
-private val LeveGreen = Color(0xFF1DB954)
 private val DeviceSortKey = stringPreferencesKey("leveDeviceSort")
 
 private fun formatDuration(ms: Long): String {
@@ -149,7 +148,7 @@ fun DeviceMusicScreen(
             Icon(
                 painter = painterResource(R.drawable.leve_phone),
                 contentDescription = null,
-                tint = LeveGreen,
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(56.dp),
             )
             Spacer(Modifier.height(16.dp))
@@ -163,7 +162,7 @@ fun DeviceMusicScreen(
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = { permissionLauncher.launch(LocalMusic.permission) },
-                colors = ButtonDefaults.buttonColors(containerColor = LeveGreen, contentColor = Color.Black),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
             ) {
                 Text("Permitir acesso", fontWeight = FontWeight.Bold)
             }
@@ -247,7 +246,7 @@ fun DeviceMusicScreen(
                             onValueChange = { query = it },
                             singleLine = true,
                             textStyle = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface),
-                            cursorBrush = SolidColor(LeveGreen),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -289,7 +288,7 @@ fun DeviceMusicScreen(
                     Switch(
                         checked = saveDownloads,
                         onCheckedChange = { saveDownloads = it },
-                        colors = SwitchDefaults.colors(checkedTrackColor = LeveGreen, checkedThumbColor = Color.Black),
+                        colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary, checkedThumbColor = MaterialTheme.colorScheme.onPrimary),
                     )
                 }
             }
@@ -308,10 +307,10 @@ fun DeviceMusicScreen(
                             text = t.label,
                             fontSize = 13.sp,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
+                            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(if (selected) LeveGreen else MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh)
                                 .clickable {
                                     tabName = t.name
                                     openGroup = null
@@ -343,7 +342,7 @@ fun DeviceMusicScreen(
                             Text(
                                 "‹ Voltar",
                                 fontSize = 12.sp,
-                                color = LeveGreen,
+                                color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.clickable { openGroup = null }.padding(vertical = 2.dp),
                             )
                         }
@@ -373,7 +372,7 @@ fun DeviceMusicScreen(
                                         text = {
                                             Text(
                                                 option.label,
-                                                color = if (option == sort) LeveGreen else MaterialTheme.colorScheme.onSurface,
+                                                color = if (option == sort) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                                 fontWeight = if (option == sort) FontWeight.Bold else FontWeight.Normal,
                                             )
                                         },
@@ -395,13 +394,13 @@ fun DeviceMusicScreen(
                             modifier = Modifier
                                 .size(44.dp)
                                 .clip(CircleShape)
-                                .background(LeveGreen)
+                                .background(MaterialTheme.colorScheme.primary)
                                 .clickable { play(visibleSongs, 0, headerTitle) },
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.play),
                                 contentDescription = "Tocar",
-                                tint = Color.Black,
+                                tint = MaterialTheme.colorScheme.onPrimary,
                                 modifier = Modifier.size(24.dp),
                             )
                         }
@@ -510,7 +509,7 @@ private fun LocalSongRow(
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = if (active) LeveGreen else MaterialTheme.colorScheme.onSurface,
+                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 "${song.artist} · ${song.album}",

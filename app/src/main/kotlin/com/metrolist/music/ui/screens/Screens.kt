@@ -45,6 +45,13 @@ sealed class Screens(
         route = "library"
     )
 
+    object YouTube : Screens(
+        titleId = R.string.leve_youtube_tab,
+        iconIdInactive = R.drawable.leve_youtube_tab,
+        iconIdActive = R.drawable.leve_youtube_tab,
+        route = "leve_youtube"
+    )
+
     object Device : Screens(
         titleId = R.string.leve_device_music,
         iconIdInactive = R.drawable.leve_phone,
@@ -53,6 +60,6 @@ sealed class Screens(
     )
 
     companion object {
-        val MainScreens = listOf(Home, Search, Device, ListenTogether, Library)
+        val MainScreens = listOf(Home, Search, YouTube, Device, ListenTogether, Library)
     }
 }

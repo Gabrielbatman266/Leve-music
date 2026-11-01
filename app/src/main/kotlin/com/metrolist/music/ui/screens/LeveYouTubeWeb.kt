@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
@@ -447,7 +448,10 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
             }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    // Espaço da barra de baixo (abas + miniplayer) pra nada ficar escondido
+    val bottomInset =
+        com.metrolist.music.LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding()
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black).padding(bottom = bottomInset)) {
         AndroidView(
             factory = {
                 (webView.parent as? ViewGroup)?.removeView(webView)
@@ -472,7 +476,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 14.dp, bottom = 206.dp)
+                .padding(end = 14.dp, bottom = 74.dp)
                 .alpha(0.45f)
                 .size(46.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
@@ -487,7 +491,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 14.dp, bottom = 150.dp)
+                .padding(end = 14.dp, bottom = 18.dp)
                 .alpha(if (menuOpen) 1f else 0.45f)
                 .size(46.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
@@ -512,7 +516,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                     .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
                     .background(Color(0xFF181818))
                     .clickable(enabled = false) {}
-                    .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 120.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 24.dp),
             ) {
                 Text("Leve · YouTube", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 votes?.let { Text(it, fontSize = 13.sp, color = Color(0xFFB3B3B3)) }
