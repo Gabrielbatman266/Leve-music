@@ -1799,6 +1799,15 @@ fun BottomSheetPlayer(
                                     enabled = !isListenTogetherGuest,
                                     onClick = {
                                         playerConnection.player.toggleRepeatMode()
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            when (playerConnection.player.repeatMode) {
+                                                Player.REPEAT_MODE_ONE -> "Repetindo esta música"
+                                                Player.REPEAT_MODE_ALL -> "Repetindo a fila toda"
+                                                else -> "Repetir desligado"
+                                            },
+                                            android.widget.Toast.LENGTH_SHORT,
+                                        ).show()
                                     },
                                 )
                             }

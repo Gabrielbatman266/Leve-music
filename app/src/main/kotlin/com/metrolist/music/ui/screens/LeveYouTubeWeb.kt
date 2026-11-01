@@ -180,6 +180,11 @@ private fun pageScript(speed: Float, sponsor: Boolean, amoled: Boolean, hideShor
         } else if (v.muted && window.__leveWasAd) { v.muted = false; }
         window.__leveWasAd = player && player.classList.contains('ad-showing');
         if (Math.abs(v.playbackRate - window.__leveSpeed) > 0.01) v.playbackRate = window.__leveSpeed;
+        // Repetir: o YouTube ignora o "loop" do vídeo, então voltamos pro começo na mão
+        v.loop = !!window.__leveLoop;
+        if (window.__leveLoop && isFinite(v.duration) && v.duration > 1 && v.currentTime > v.duration - 0.6) {
+          v.currentTime = 0; v.play();
+        }
         if (window.__leveSB) {
           for (var i = 0; i < segs.length; i++) {
             var s = segs[i].segment;
@@ -369,7 +374,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
 
     LaunchedEffect(speed, sponsor, theme, hideShorts) { injectPage() }
     LaunchedEffect(textZoom) { webView.settings.textZoom = textZoom }
-    LaunchedEffect(loop) { js("var v=document.querySelector('video'); if(v) v.loop=$loop;") }
+    LaunchedEffect(loop) { js("window.__leveLoop=$loop; var v=document.querySelector('video'); if(v) v.loop=$loop;") }
 
     val currentVideo = videoIdOf(currentUrl)
     LaunchedEffect(currentVideo) {

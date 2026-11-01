@@ -1361,6 +1361,8 @@ class MusicService :
                 .setSeekForwardIncrementMs(5000)
                 .setDeviceVolumeControlEnabled(true)
                 .build()
+        // Leve Music: deixa a próxima música pré-carregada (pular fica quase instantâneo)
+        player.preloadConfiguration = ExoPlayer.PreloadConfiguration(10_000_000L)
         createdPlayer = player
 
         playerNormalizationProcessors[player] = normalizationProcessor
@@ -2548,6 +2550,53 @@ class MusicService :
         }
     }
 
+    private var upcomingPrefetchJob: kotlinx.coroutines.Job? = null
+
+    /** Descobre antes o link de áudio das próximas 2 músicas, pra "próxima" não ficar esperando. */
+    private fun prefetchUpcomingStreams() {
+        val ids = mutableListOf<String>()
+        runCatching {
+            val timeline = player.currentTimeline
+            var index = player.currentMediaItemIndex
+            repeat(2) {
+                if (index == C.INDEX_UNSET || timeline.isEmpty) return@repeat
+                index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
+                if (index != C.INDEX_UNSET) ids += player.getMediaItemAt(index).mediaId
+            }
+        }
+        val pending =
+            ids.filter { id ->
+                !com.metrolist.music.utils.LocalMusic.isLocalId(id) &&
+                    songUrlCache[id] == null &&
+                    !downloadCache.isCached(id, 0, 1)
+            }
+        if (pending.isEmpty()) return
+        upcomingPrefetchJob?.cancel()
+        upcomingPrefetchJob =
+            scope.launch(Dispatchers.IO) {
+                pending.forEach { id ->
+                    val generation = songUrlCache.generation(id)
+                    val data =
+                        InnerTubeXPlayer.playerResponseForPlayback(
+                            id,
+                            audioQuality = audioQuality,
+                            connectivityManager = connectivityManager,
+                        ).getOrNull() ?: return@forEach
+                    songUrlCache.put(
+                        mediaId = id,
+                        url = data.streamUrl,
+                        requestHeaders = data.streamHeaders,
+                        clientName = data.streamClient,
+                        expiresInSeconds = data.streamExpiresInSeconds,
+                        requireBoundedRange = data.requireBoundedRange,
+                        rangeChunkSizeBytes = data.rangeChunkSizeBytes,
+                        useRangeChunks = data.useRangeChunks,
+                        expectedGeneration = generation,
+                    )
+                }
+            }
+    }
+
     override fun onMediaItemTransition(
         mediaItem: MediaItem?,
         reason: Int,
@@ -2562,6 +2611,7 @@ class MusicService :
             }
         }
         lastTransitionedMediaId = mediaItem?.mediaId
+        prefetchUpcomingStreams()
         // Leve Music: músicas do celular entram no histórico/biblioteca como as outras
         mediaItem?.takeIf { LocalMusic.isLocalId(it.mediaId) }?.metadata?.let { localMetadata ->
             database.query { insert(localMetadata) }
