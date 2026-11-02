@@ -253,18 +253,26 @@ object LeveYouTubeSearch {
             val obj = value as? JsonObject
             when {
                 obj == null -> false
+                // Shorts: pula a prateleira inteira
+                key == "reelShelfRenderer" || key == "reelItemRenderer" || key == "shortsLockupViewModel" ||
+                    key == "shortsLockupViewModelV2" -> true
                 key == "videoRenderer" || key == "compactVideoRenderer" || key == "gridVideoRenderer" -> {
-                    obj.rendererToSongItem(defaultChannel, defaultChannelId)?.let { out += it }
+                    if (!obj.isShort()) obj.rendererToSongItem(defaultChannel, defaultChannelId)?.let { out += it }
                     true
                 }
                 key == "lockupViewModel" -> {
-                    obj.lockupToSongItem(defaultChannel, defaultChannelId)?.let { out += it }
+                    if (!obj.isShort()) obj.lockupToSongItem(defaultChannel, defaultChannelId)?.let { out += it }
                     true
                 }
                 else -> false
             }
         }
         return out.distinctBy { it.id }
+    }
+
+    private fun JsonObject.isShort(): Boolean {
+        val t = toString()
+        return "reelWatchEndpoint" in t || "\"/shorts/" in t
     }
 
     private fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull

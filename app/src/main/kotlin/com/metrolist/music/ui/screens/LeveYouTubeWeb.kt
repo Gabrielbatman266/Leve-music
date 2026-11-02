@@ -142,8 +142,24 @@ private fun pageScript(speed: Float, sponsor: Boolean, amoled: Boolean, hideShor
       var t = document.getElementById('leve-theme');
       if (!t) { t = document.createElement('style'); t.id = 'leve-theme'; (document.head || document.documentElement).appendChild(t); }
       t.textContent = ($amoled ? 'html,body,ytm-app,#app,ytm-mobile-topbar-renderer,.mobile-topbar-header,ytm-pivot-bar-renderer,ytm-browse,ytm-watch,ytm-single-column-watch-next-results-renderer,ytm-item-section-renderer,.page-container,ytm-engagement-panel{background:#000!important;background-color:#000!important}' : '') +
-        ($hideShorts ? 'ytm-reel-shelf-renderer,ytm-shorts-lockup-view-model,ytm-shorts-lockup-view-model-v2,ytm-pivot-bar-item-renderer:has(a[href^="/shorts"]),ytm-rich-section-renderer:has(a[href^="/shorts"]){display:none!important}' : '');
+        ($hideShorts ? 'ytm-reel-shelf-renderer,ytm-shorts-lockup-view-model,ytm-shorts-lockup-view-model-v2,ytm-reel-item-renderer,grid-shelf-view-model:has(a[href*="/shorts/"]),ytm-pivot-bar-item-renderer:has(a[href^="/shorts"]),ytm-pivot-bar-item-renderer:has(.pivot-shorts),ytm-rich-section-renderer:has(a[href*="/shorts/"]),ytm-rich-item-renderer:has(a[href*="/shorts/"]),ytm-video-with-context-renderer:has(a[href*="/shorts/"]),ytm-compact-video-renderer:has(a[href*="/shorts/"]),ytm-item-section-renderer:has(ytm-reel-shelf-renderer),ytm-chip-cloud-chip-renderer:has(a[href*="shorts"]){display:none!important}' : '');
+      window.__leveNoShorts = $hideShorts;
       if (window.__levePage) return; window.__levePage = true;
+      // Sem Shorts: abrir um Short vira vídeo normal; e some com o que o CSS não pegou
+      function killShorts(){
+        if (!window.__leveNoShorts) return;
+        var m = location.pathname.match(/^\/shorts\/([\w-]{6,})/);
+        if (m) { location.replace('/watch?v=' + m[1]); return; }
+        var links = document.querySelectorAll('a[href*="/shorts/"]');
+        for (var i = 0; i < links.length; i++) {
+          var el = links[i].closest('ytm-rich-item-renderer,ytm-video-with-context-renderer,ytm-compact-video-renderer,ytm-reel-item-renderer,ytm-shorts-lockup-view-model,ytm-rich-section-renderer,ytm-reel-shelf-renderer,grid-shelf-view-model,ytm-pivot-bar-item-renderer') || links[i];
+          el.style.display = 'none';
+        }
+      }
+      killShorts();
+      new MutationObserver(function(){ clearTimeout(window.__leveKS); window.__leveKS = setTimeout(killShorts, 150); })
+        .observe(document.documentElement, {childList: true, subtree: true});
+      setInterval(killShorts, 1000);
       var css = document.createElement('style');
       css.textContent = [
         'ytm-promoted-sparkles-web-renderer','ytm-promoted-video-renderer','ytm-companion-ad-renderer',
