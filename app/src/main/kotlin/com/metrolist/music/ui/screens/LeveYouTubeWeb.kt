@@ -134,10 +134,11 @@ private val documentStartScript =
     """.trimIndent()
 
 /** Roda com o site carregado: CSS de limpeza, pular anúncio, SponsorBlock, velocidade, repetir. */
-private fun pageScript(speed: Float, sponsor: Boolean, amoled: Boolean, hideShorts: Boolean) =
+private fun pageScript(speed: Float, sponsor: Boolean, amoled: Boolean, hideShorts: Boolean, quality: String) =
     """
     (function(){
       window.__leveSpeed = $speed; window.__leveSB = $sponsor;
+      if (window.__leveQ !== '$quality') { window.__leveQ = '$quality'; window.__leveQDone = null; }
       var t = document.getElementById('leve-theme');
       if (!t) { t = document.createElement('style'); t.id = 'leve-theme'; (document.head || document.documentElement).appendChild(t); }
       t.textContent = ($amoled ? 'html,body,ytm-app,#app,ytm-mobile-topbar-renderer,.mobile-topbar-header,ytm-pivot-bar-renderer,ytm-browse,ytm-watch,ytm-single-column-watch-next-results-renderer,ytm-item-section-renderer,.page-container,ytm-engagement-panel{background:#000!important;background-color:#000!important}' : '') +
@@ -180,6 +181,17 @@ private fun pageScript(speed: Float, sponsor: Boolean, amoled: Boolean, hideShor
         } else if (v.muted && window.__leveWasAd) { v.muted = false; }
         window.__leveWasAd = player && player.classList.contains('ad-showing');
         if (Math.abs(v.playbackRate - window.__leveSpeed) > 0.01) v.playbackRate = window.__leveSpeed;
+        // Qualidade travada (menos dados = carrega e pula no tempo bem mais rápido)
+        if (window.__leveQ && window.__leveQDone !== id) {
+          var mp = document.getElementById('movie_player');
+          if (mp && mp.setPlaybackQualityRange) {
+            try {
+              mp.setPlaybackQualityRange(window.__leveQ, window.__leveQ);
+              if (mp.setPlaybackQuality) mp.setPlaybackQuality(window.__leveQ);
+              window.__leveQDone = id;
+            } catch (e) {}
+          }
+        }
         // Repetir: o YouTube ignora o "loop" do vídeo, então voltamos pro começo na mão
         v.loop = !!window.__leveLoop;
         if (window.__leveLoop && isFinite(v.duration) && v.duration > 1 && v.currentTime > v.duration - 0.6) {
@@ -208,6 +220,7 @@ private fun videoIdOf(url: String?): String? =
 
 private val WebThemeKey = androidx.datastore.preferences.core.stringPreferencesKey("leveWebTheme")
 private val WebShortsKey = booleanPreferencesKey("leveWebHideShorts")
+private val WebQualityKey = androidx.datastore.preferences.core.stringPreferencesKey("leveWebQuality")
 
 /** Um WebView só, reaproveitado: o 2º vídeo em diante abre bem mais rápido. */
 private object LeveWebHolder {
@@ -253,6 +266,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
     var sponsor by rememberPreference(WebSponsorKey, true)
     var theme by rememberPreference(WebThemeKey, "escuro")
     var hideShorts by rememberPreference(WebShortsKey, true)
+    var quality by rememberPreference(WebQualityKey, "large") // 480p: abre e pula no tempo mais rápido
     var textZoom by rememberPreference(com.metrolist.music.utils.LeveWebTextZoomKey, 100)
     var loop by remember { mutableStateOf(false) }
     var currentUrl by remember { mutableStateOf<String?>(null) }
@@ -303,7 +317,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
             }
         }
 
-    fun injectPage() = webView.evaluateJavascript(pageScript(speed, sponsor, theme == "preto", hideShorts), null)
+    fun injectPage() = webView.evaluateJavascript(pageScript(speed, sponsor, theme == "preto", hideShorts, quality), null)
 
     fun js(code: String) = webView.evaluateJavascript(code, null)
 
@@ -372,7 +386,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
         }
     }
 
-    LaunchedEffect(speed, sponsor, theme, hideShorts) { injectPage() }
+    LaunchedEffect(speed, sponsor, theme, hideShorts, quality) { injectPage() }
     LaunchedEffect(textZoom) { webView.settings.textZoom = textZoom }
     LaunchedEffect(loop) { js("window.__leveLoop=$loop; var v=document.querySelector('video'); if(v) v.loop=$loop;") }
 
@@ -409,8 +423,22 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                     layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
                 }
             }
+            activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
             setSystemBarsHidden(activity.window, true)
             activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            // Se a barra de notificações ou os botões voltarem (girar a tela, toque na borda), esconde de novo
+            val rehide = Runnable { setSystemBarsHidden(activity.window, true) }
+            holder?.setOnApplyWindowInsetsListener { v, insets ->
+                val compat = androidx.core.view.WindowInsetsCompat.toWindowInsetsCompat(insets, v)
+                if (compat.isVisible(androidx.core.view.WindowInsetsCompat.Type.statusBars()) ||
+                    compat.isVisible(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
+                ) {
+                    v.removeCallbacks(rehide)
+                    v.postDelayed(rehide, 1200)
+                }
+                insets
+            }
+            holder?.postDelayed(rehide, 500)
         }
         onDispose {
             holder?.let { h ->
@@ -418,6 +446,7 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                 decor?.removeView(h)
             }
             if (view != null) {
+                activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
                 activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 setSystemBarsHidden(activity?.window, false)
             }
@@ -558,6 +587,19 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                         speed = options[(options.indexOf(speed).coerceAtLeast(0) + 1) % options.size]
                     }
                     WebChip(if (loop) "Repetir ✓" else "Repetir", highlighted = loop) { loop = !loop }
+                    WebChip(
+                        when (quality) {
+                            "large" -> "Qualidade: rápida (480p)"
+                            "hd720" -> "Qualidade: 720p"
+                            "medium" -> "Qualidade: econômica (360p)"
+                            else -> "Qualidade: automática"
+                        },
+                        highlighted = quality.isNotEmpty(),
+                    ) {
+                        val options = listOf("large", "hd720", "", "medium")
+                        quality = options[(options.indexOf(quality).coerceAtLeast(0) + 1) % options.size]
+                        Toast.makeText(context, "Vale a partir do próximo vídeo (ou recarregue este)", Toast.LENGTH_SHORT).show()
+                    }
                     WebChip(if (sleepMinutes == 0) "Timer" else "Timer $sleepMinutes min", highlighted = sleepMinutes != 0) {
                         val options = listOf(15, 30, 60, 0)
                         setSleepTimer(options[(options.indexOf(sleepMinutes) + 1) % options.size])
