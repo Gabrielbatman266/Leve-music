@@ -43,6 +43,7 @@ data class LeveMix(
         get() {
             val who = seed.artists.firstOrNull()?.name ?: seed.title
             return when {
+                style == com.metrolist.music.utils.LeveStyle.VIDEOS -> "Mix vídeos · $who"
                 !style.isMusic -> "Mix ${style.label}"
                 style == com.metrolist.music.utils.LeveStyle.MUSICA -> "Mix $who"
                 else -> "Mix ${style.label} · $who"
@@ -165,7 +166,12 @@ class LeveHomeViewModel @Inject constructor(
             mixes.value = emptyList()
             return
         }
-        val byStyle = listened.groupBy { styleOf(it.title, it.artists.map { a -> a.name }) }
+        val byStyle = listened.groupBy {
+            com.metrolist.music.utils.LeveStyle.detect(
+                it.title + " " + it.artists.joinToString(" ") { a -> a.name },
+                it.song.duration,
+            )
+        }
         // Um mix por estilo (até 3 estilos), e até 2 artistas diferentes do estilo principal de música
         val seeds = mutableListOf<Pair<Song, com.metrolist.music.utils.LeveStyle>>()
         byStyle.entries.sortedByDescending { it.value.size }.take(4).forEach { (style, songs) ->
@@ -190,11 +196,16 @@ class LeveHomeViewModel @Inject constructor(
         fun addAll(items: List<SongItem>?) {
             items.orEmpty().forEach { item ->
                 if (item.id == seed.id || picked.containsKey(item.id)) return@forEach
-                val s = styleOf(item.title, item.artists.map { it.name })
+                val s = com.metrolist.music.utils.LeveStyle.detect(
+                    item.title + " " + item.artists.joinToString(" ") { it.name },
+                    item.duration,
+                )
                 val fits =
                     if (style.isMusic) {
                         // música: nada de ASMR/podcast/etc; gênero definido = só esse gênero (ou música genérica)
                         s.isMusic && (style == com.metrolist.music.utils.LeveStyle.MUSICA || s == style || s == com.metrolist.music.utils.LeveStyle.MUSICA)
+                    } else if (style == com.metrolist.music.utils.LeveStyle.VIDEOS) {
+                        !s.isMusic // vídeos longos parecidos, nada de música
                     } else {
                         s == style // ASMR só com ASMR, meditação só com meditação…
                     }
