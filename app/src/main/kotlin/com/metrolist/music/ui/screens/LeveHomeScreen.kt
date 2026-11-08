@@ -310,7 +310,7 @@ fun LeveHomeScreen(
         modifier = Modifier.fillMaxSize(),
     ) {
         if (themeOption.animated) {
-            com.metrolist.music.ui.component.LeveAnimatedBackground(accent = MaterialTheme.colorScheme.primary)
+            com.metrolist.music.ui.component.LeveAnimatedBackground(accent = MaterialTheme.colorScheme.primary, style = themeOption.key)
         }
         LazyColumn(
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),

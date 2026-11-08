@@ -33,6 +33,7 @@ private data class Orb(val x: Float, val y: Float, val r: Float, val speed: Floa
 fun LeveAnimatedBackground(
     accent: Color,
     modifier: Modifier = Modifier,
+    style: String = "ps2",
 ) {
     val orbs =
         remember {
@@ -58,6 +59,54 @@ fun LeveAnimatedBackground(
     )
 
     Canvas(modifier = modifier.fillMaxSize()) {
+        val angle0 = t * 2f * PI.toFloat()
+        when (style) {
+            "aurora" -> {
+                // três faixas de luz ondulando no topo
+                listOf(Color(0xFF1DE9B6), Color(0xFF7C4DFF), Color(0xFF2979FF)).forEachIndexed { i, c ->
+                    val cx = size.width * (0.2f + 0.3f * i + 0.12f * sin(angle0 * 2 + i * 2.1f))
+                    val cy = size.height * (0.18f + 0.05f * sin(angle0 * 3 + i))
+                    drawOval(
+                        Brush.radialGradient(
+                            listOf(c.copy(alpha = 0.28f), Color.Transparent),
+                            center = Offset(cx, cy),
+                            radius = size.width * 0.55f,
+                        ),
+                        topLeft = Offset(cx - size.width * 0.7f, cy - size.height * 0.16f),
+                        size = androidx.compose.ui.geometry.Size(size.width * 1.4f, size.height * 0.32f),
+                    )
+                }
+                return@Canvas
+            }
+            "neve", "sakura" -> {
+                orbs.forEachIndexed { i, o ->
+                    val fall = (o.y + t * o.speed * 6f) % 1f
+                    val cx = ((o.x + t * (if (style == "sakura") 0.8f else 0f) + sin(angle0 * 4 * o.speed + o.phase) * 0.03f) % 1f) * size.width
+                    val cy = fall * size.height
+                    if (style == "neve") {
+                        drawCircle(Color.White.copy(alpha = 0.35f + o.alpha), radius = o.r * 0.9f, center = Offset(cx, cy))
+                    } else {
+                        val c = if (i % 3 == 0) Color(0xFFFFC1D9) else accent
+                        drawOval(
+                            c.copy(alpha = 0.55f + o.alpha * 0.5f),
+                            topLeft = Offset(cx - o.r * 1.6f, cy - o.r * 0.9f),
+                            size = androidx.compose.ui.geometry.Size(o.r * 3.2f, o.r * 1.8f),
+                        )
+                    }
+                }
+                return@Canvas
+            }
+            "vagalumes" -> {
+                orbs.forEach { o ->
+                    val cx = (o.x + sin(angle0 * 2 * o.speed + o.phase) * 0.05f) * size.width
+                    val cy = (o.y + sin(angle0 * 1.5f * o.speed + o.phase * 1.7f) * 0.05f) * size.height
+                    val pulse = 0.5f + 0.5f * sin(angle0 * 8 * o.speed + o.phase)
+                    drawCircle(accent.copy(alpha = 0.12f * pulse), radius = o.r * 5f, center = Offset(cx, cy))
+                    drawCircle(accent.copy(alpha = 0.4f + 0.6f * pulse), radius = o.r * 0.8f, center = Offset(cx, cy))
+                }
+                return@Canvas
+            }
+        }
         // Brilho de fundo
         drawRect(
             Brush.radialGradient(

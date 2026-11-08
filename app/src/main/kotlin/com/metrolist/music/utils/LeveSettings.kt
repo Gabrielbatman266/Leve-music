@@ -39,6 +39,11 @@ val LeveThemes =
         LeveThemeOption("purple", "Roxo noite", 0xFF0D0916, 0xFF1D1530, 0xFFB388FF),
         LeveThemeOption("ocean", "Oceano", 0xFF061619, 0xFF102A30, 0xFF26C6DA),
         LeveThemeOption("sunset", "Pôr do sol", 0xFF140C08, 0xFF2A1A12, 0xFFFF8A3D),
+        LeveThemeOption("aurora", "Aurora boreal (animado)", 0xFF020A0C, 0xFF0E2026, 0xFF1DE9B6, animated = true),
+        LeveThemeOption("sakura", "Cerejeiras (animado)", 0xFF160A12, 0xFF2A1422, 0xFFFF8FB8, animated = true),
+        LeveThemeOption("neve", "Neve caindo (animado)", 0xFF06101C, 0xFF13233A, 0xFFB3E5FC, animated = true),
+        LeveThemeOption("vagalumes", "Vaga-lumes (animado)", 0xFF020804, 0xFF0F1E12, 0xFFC6FF00, animated = true),
+        LeveThemeOption("contraste", "Alto contraste (leitura fácil)", 0xFF000000, 0xFF1C1C1C, 0xFFFFD400),
     )
 
 fun leveThemeFor(key: String?): LeveThemeOption = LeveThemes.firstOrNull { it.key == key } ?: LeveThemes.first()

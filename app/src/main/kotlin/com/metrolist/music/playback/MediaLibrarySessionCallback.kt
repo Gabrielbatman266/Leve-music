@@ -105,6 +105,9 @@ constructor(
                 .add(MediaSessionConstants.CommandToggleShuffle)
                 .add(MediaSessionConstants.CommandToggleRepeatMode)
                 .add(MediaSessionConstants.CommandAddToTargetPlaylist)
+                .add(MediaSessionConstants.CommandSeekBack10)
+                .add(MediaSessionConstants.CommandSeekForward10)
+                .add(MediaSessionConstants.CommandClose)
                 .build(),
             connectionResult.availablePlayerCommands,
         )
@@ -125,6 +128,18 @@ constructor(
 
             MediaSessionConstants.ACTION_TOGGLE_REPEAT_MODE -> session.player.toggleRepeatMode()
             MediaSessionConstants.ACTION_ADD_TO_TARGET_PLAYLIST -> addToTargetPlaylist()
+            MediaSessionConstants.ACTION_SEEK_BACK_10 ->
+                session.player.seekTo((session.player.currentPosition - 10_000).coerceAtLeast(0))
+            MediaSessionConstants.ACTION_SEEK_FORWARD_10 -> {
+                val p = session.player
+                val d = p.duration
+                p.seekTo(if (d > 0) (p.currentPosition + 10_000).coerceAtMost(d - 500) else p.currentPosition + 10_000)
+            }
+            MediaSessionConstants.ACTION_CLOSE -> {
+                session.player.pause()
+                session.player.stop()
+                session.player.clearMediaItems()
+            }
         }
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
     }

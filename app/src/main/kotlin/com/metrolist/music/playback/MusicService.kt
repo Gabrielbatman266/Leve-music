@@ -1623,64 +1623,81 @@ class MusicService :
     }
 
     private fun updateNotification(isLiked: Boolean? = currentSong.value?.song?.let { if (it.isEpisode) it.inLibrary != null else it.liked }) {
-        mediaSession?.setCustomLayout(
-            listOf(
-                CommandButton
-                    .Builder()
-                    .setDisplayName(getString(if (player.shuffleModeEnabled) R.string.action_shuffle_off else R.string.action_shuffle_on))
-                    .setIconResId(if (player.shuffleModeEnabled) R.drawable.shuffle_on else R.drawable.shuffle)
-                    .setSessionCommand(CommandToggleShuffle)
-                    .build(),
-                CommandButton
-                    .Builder()
-                    .setDisplayName(
-                        getString(
-                            if (isLiked == true) {
-                                R.string.action_remove_like
-                            } else {
-                                R.string.action_like
-                            },
-                        ),
-                    ).setIconResId(if (isLiked == true) R.drawable.ic_heart else R.drawable.ic_heart_outline)
-                    .setSessionCommand(CommandToggleLike)
-                    .setEnabled(currentSong.value != null)
-                    .build(),
-                CommandButton
-                    .Builder()
-                    .setDisplayName(
-                        getString(
-                            when (player.repeatMode) {
-                                REPEAT_MODE_OFF -> R.string.repeat_mode_off
-                                REPEAT_MODE_ONE -> R.string.repeat_mode_one
-                                REPEAT_MODE_ALL -> R.string.repeat_mode_all
-                                else -> throw IllegalStateException()
-                            },
-                        ),
-                    ).setIconResId(
-                        when (player.repeatMode) {
-                            REPEAT_MODE_OFF -> R.drawable.repeat
-                            REPEAT_MODE_ONE -> R.drawable.repeat_one_on
-                            REPEAT_MODE_ALL -> R.drawable.repeat_on
-                            else -> throw IllegalStateException()
-                        },
-                    ).setSessionCommand(CommandToggleRepeatMode)
-                    .build(),
-                CommandButton
-                    .Builder()
-                    .setDisplayName(getString(R.string.start_radio))
-                    .setIconResId(R.drawable.radio)
-                    .setSessionCommand(CommandToggleStartRadio)
-                    .setEnabled(currentSong.value != null)
-                    .build(),
-                CommandButton
-                    .Builder()
-                    .setDisplayName(getString(R.string.android_auto_target_playlist))
-                    .setIconResId(R.drawable.playlist_add)
-                    .setSessionCommand(CommandAddToTargetPlaylist)
-                    .setEnabled(currentSong.value != null)
-                    .build(),
-            ),
-        )
+        val hasSong = currentSong.value != null
+        // Leve: Repetir sempre em primeiro (é o que fica visível ao lado do play), depois Curtir.
+        val repeat =
+            CommandButton
+                .Builder()
+                .setDisplayName(
+                    when (player.repeatMode) {
+                        REPEAT_MODE_ONE -> "Repetir: esta música"
+                        REPEAT_MODE_ALL -> "Repetir: a fila toda"
+                        else -> "Repetir: desligado"
+                    },
+                ).setIconResId(
+                    when (player.repeatMode) {
+                        REPEAT_MODE_ONE -> R.drawable.repeat_one_on
+                        REPEAT_MODE_ALL -> R.drawable.repeat_on
+                        else -> R.drawable.repeat
+                    },
+                ).setSessionCommand(CommandToggleRepeatMode)
+                .setEnabled(true)
+                .build()
+        val like =
+            CommandButton
+                .Builder()
+                .setDisplayName(getString(if (isLiked == true) R.string.action_remove_like else R.string.action_like))
+                .setIconResId(if (isLiked == true) R.drawable.ic_heart else R.drawable.ic_heart_outline)
+                .setSessionCommand(CommandToggleLike)
+                .setEnabled(hasSong)
+                .build()
+        val back10 =
+            CommandButton
+                .Builder()
+                .setDisplayName("Voltar 10 s")
+                .setIconResId(R.drawable.replay)
+                .setSessionCommand(com.metrolist.music.constants.MediaSessionConstants.CommandSeekBack10)
+                .setEnabled(hasSong)
+                .build()
+        val fwd10 =
+            CommandButton
+                .Builder()
+                .setDisplayName("Avançar 10 s")
+                .setIconResId(R.drawable.fast_forward)
+                .setSessionCommand(com.metrolist.music.constants.MediaSessionConstants.CommandSeekForward10)
+                .setEnabled(hasSong)
+                .build()
+        val shuffle =
+            CommandButton
+                .Builder()
+                .setDisplayName(getString(if (player.shuffleModeEnabled) R.string.action_shuffle_off else R.string.action_shuffle_on))
+                .setIconResId(if (player.shuffleModeEnabled) R.drawable.shuffle_on else R.drawable.shuffle)
+                .setSessionCommand(CommandToggleShuffle)
+                .build()
+        val radio =
+            CommandButton
+                .Builder()
+                .setDisplayName(getString(R.string.start_radio))
+                .setIconResId(R.drawable.radio)
+                .setSessionCommand(CommandToggleStartRadio)
+                .setEnabled(hasSong)
+                .build()
+        val playlist =
+            CommandButton
+                .Builder()
+                .setDisplayName(getString(R.string.android_auto_target_playlist))
+                .setIconResId(R.drawable.playlist_add)
+                .setSessionCommand(CommandAddToTargetPlaylist)
+                .setEnabled(hasSong)
+                .build()
+        val close =
+            CommandButton
+                .Builder()
+                .setDisplayName("Fechar")
+                .setIconResId(R.drawable.close)
+                .setSessionCommand(com.metrolist.music.constants.MediaSessionConstants.CommandClose)
+                .build()
+        mediaSession?.setCustomLayout(listOf(repeat, like, back10, fwd10, shuffle, radio, playlist, close))
     }
 
     /**

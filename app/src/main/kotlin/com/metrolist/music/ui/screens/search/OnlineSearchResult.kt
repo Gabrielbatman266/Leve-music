@@ -49,6 +49,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -230,7 +234,7 @@ fun OnlineSearchResult(
         }
     }
 
-    val ytItemContent: @Composable LazyItemScope.(YTItem) -> Unit = { item: YTItem ->
+    val ytItemContent: @Composable LazyItemScope.(YTItem) -> Unit = ytItemContent@{ item: YTItem ->
         val longClick = {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             menuState.show {
@@ -280,6 +284,32 @@ fun OnlineSearchResult(
                     }
                 }
             }
+        }
+        if (item is SongItem &&
+            viewModel.filter.value == com.metrolist.music.utils.LeveYouTubeSearch.FILTER_ALL_YOUTUBE
+        ) {
+            // "Todo o YouTube": miniatura grande, do jeito do YouTube
+            LeveBigVideoCard(
+                video = item,
+                isActive = mediaMetadata?.id == item.id,
+                onClick = {
+                    if (item.id == mediaMetadata?.id) {
+                        playerConnection.togglePlayPause()
+                    } else {
+                        playerConnection.playQueue(
+                            if (com.metrolist.music.utils.LeveYouTubeSearch.isYouTubeVideo(item.musicVideoType)) {
+                                com.metrolist.music.playback.queues.LeveVideoQueue(item)
+                            } else if (autoRadioQueue) {
+                                YouTubeQueue(WatchEndpoint(videoId = item.id), item.toMediaMetadata())
+                            } else {
+                                ListQueue(title = item.title, items = listOf(item.toMediaItem()))
+                            },
+                        )
+                    }
+                },
+                onLongClick = longClick,
+            )
+            return@ytItemContent
         }
         YouTubeListItem(
             item = item,
@@ -601,3 +631,73 @@ private fun String.toLocalizedSearchSection(): String =
         "Profiles" -> stringResource(R.string.filter_profiles)
         else -> this
     }
+
+/** Cartão de vídeo grande: miniatura na largura toda, título e canal embaixo. */
+@Composable
+private fun LeveBigVideoCard(
+    video: SongItem,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Box {
+            coil3.compose.AsyncImage(
+                model = video.thumbnail.replace(Regex("/(default|mqdefault|sddefault)\\.jpg"), "/hqdefault.jpg"),
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            )
+            video.duration?.takeIf { it > 0 }?.let { d ->
+                Text(
+                    text = if (d >= 3600) "%d:%02d:%02d".format(d / 3600, d % 3600 / 60, d % 60) else "%d:%02d".format(d / 60, d % 60),
+                    fontSize = 12.sp,
+                    color = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                        .background(androidx.compose.ui.graphics.Color(0xCC000000))
+                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                )
+            }
+            if (isActive) {
+                Text(
+                    "▶ Tocando",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.primary)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+        }
+        Text(
+            video.title,
+            fontSize = 15.sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Text(
+            video.artists.joinToString { it.name },
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+    }
+}

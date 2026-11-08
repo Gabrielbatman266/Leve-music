@@ -387,7 +387,28 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
         val target = if (startVideoId.isNullOrBlank()) null else "https://m.youtube.com/watch?v=$startVideoId"
         when {
             webView.url.isNullOrBlank() || webView.url == "about:blank" -> webView.loadUrl(target ?: "https://m.youtube.com/")
-            target != null && videoIdOf(webView.url) != startVideoId -> webView.loadUrl(target)
+            target != null && videoIdOf(webView.url) != startVideoId -> {
+                if (webView.url.orEmpty().contains("youtube.com")) {
+                    // Já está no YouTube: troca de vídeo sem recarregar a página inteira (bem mais rápido);
+                    // se o site não trocar em 1,5 s, carrega do jeito normal
+                    webView.evaluateJavascript(
+                        """
+                        (function(){
+                          var id='$startVideoId', url='/watch?v='+id;
+                          try { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate', {state:{}})); } catch(e) {}
+                          setTimeout(function(){
+                            var mp=document.getElementById('movie_player');
+                            var cur=mp && mp.getVideoData ? mp.getVideoData().video_id : null;
+                            if (cur !== id) location.href = url;
+                          }, 1500);
+                        })();
+                        """.trimIndent(),
+                        null,
+                    )
+                } else {
+                    webView.loadUrl(target)
+                }
+            }
             else -> {
                 currentUrl = webView.url
                 injectPage()

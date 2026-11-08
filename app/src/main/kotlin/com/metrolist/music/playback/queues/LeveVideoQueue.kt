@@ -24,8 +24,8 @@ class LeveVideoQueue(
     private var exhausted = false
 
     override suspend fun getInitialStatus(): Queue.Status {
-        val related = fetchRelated(start.id)
-        val items = (listOf(start) + extra + related).distinctBy { it.id }
+        // Começa na hora: os relacionados chegam depois (nextPage), sem esperar a rede antes de tocar
+        val items = (listOf(start) + extra).distinctBy { it.id }
         items.forEach { seen += it.id }
         items.lastOrNull()?.let { lastSeedId = it.id }
         return Queue.Status(
