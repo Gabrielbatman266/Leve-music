@@ -128,6 +128,25 @@ private fun HomeCategory.accepts(text: String): Boolean =
         else -> keywords.any { textMatches(text, it) }
     }
 
+/** Abas do histórico do topo. */
+private enum class RecentTab(val label: String) {
+    ALL("Tudo"),
+    ONLINE("Músicas"),
+    OTHER("Vídeos, podcasts e ASMR"),
+    PHONE("Do celular"),
+    ;
+
+    fun accepts(song: Song): Boolean {
+        val local = com.metrolist.music.utils.LocalMusic.isLocalId(song.id)
+        return when (this) {
+            ALL -> true
+            PHONE -> local
+            ONLINE -> !local && com.metrolist.music.utils.LeveStyle.detect(song.searchText()).isMusic
+            OTHER -> !local && !com.metrolist.music.utils.LeveStyle.detect(song.searchText()).isMusic
+        }
+    }
+}
+
 private fun Song.searchText() = (title + " " + artists.joinToString(" ") { it.name }).lowercase()
 
 private fun SongItem.searchText() = (title + " " + artists.joinToString(" ") { it.name }).lowercase()
@@ -246,6 +265,9 @@ fun LeveHomeScreen(
     fun keep(text: String) = !isHidden(text) && category.accepts(text)
 
     val recent = recentSongs.orEmpty().filter { keep(it.searchText()) }
+    var recentTabName by rememberSaveable { mutableStateOf(RecentTab.ALL.name) }
+    val recentTab = RecentTab.valueOf(recentTabName)
+    val recentShown = recent.filter { recentTab.accepts(it) }
     val liked = likedSongs.orEmpty().filter { keep(it.searchText()) }
     val forYou = madeForYou.orEmpty().filter { keep(it.searchText()) }
     val bySearch =
@@ -392,11 +414,39 @@ fun LeveHomeScreen(
                 }
             }
 
+            // Abas do histórico: tudo / músicas online / vídeos, podcasts, ASMR… / do celular
+            val tabCounts = RecentTab.entries.associateWith { tab -> recent.count { tab.accepts(it) } }
+            if (tabCounts.count { it.key != RecentTab.ALL && it.value > 0 } >= 2) {
+                item(key = "recent_tabs") {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                    ) {
+                        RecentTab.entries.filter { tabCounts[it] != 0 }.forEach { tab ->
+                            val sel = tab == recentTab
+                            Text(
+                                text = "${tab.label}  ${tabCounts[tab]}",
+                                fontSize = 13.sp,
+                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                                color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .combinedClickable(onClick = { recentTabName = tab.name; showAllTiles = false })
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
             // Atalhos rápidos (2 colunas), igual ao topo do Spotify
             item(key = "tiles") {
                 // Suas músicas: tudo que você ouve fica salvo aqui (8 visíveis, "Mostrar mais" abre o resto)
-                val visibleCount = if (showAllTiles) recent.size else (if (liked.isNotEmpty()) 7 else 8)
-                val tiles = recent.take(visibleCount)
+                val visibleCount = if (showAllTiles) recentShown.size else (if (liked.isNotEmpty()) 7 else 8)
+                val tiles = recentShown.take(visibleCount)
                 // null = bloco "Músicas curtidas"; índice >= 0 = música recente
                 val cells: List<Int?> =
                     (if (liked.isNotEmpty()) listOf<Int?>(null) else emptyList()) + tiles.indices.map { it }
@@ -424,7 +474,7 @@ fun LeveHomeScreen(
                                             thumbnail = song.thumbnailUrl,
                                             isLikedTile = false,
                                             active = song.id == currentId,
-                                            onClick = { playLocal("Tocadas recentemente", recent, cell) },
+                                            onClick = { playLocal("Tocadas recentemente", recentShown, cell) },
                                             onLongClick = {
                                                 menuState.show { SongMenu(originalSong = song, onDismiss = menuState::dismiss) }
                                             },
@@ -438,10 +488,10 @@ fun LeveHomeScreen(
                 }
             }
 
-            if (recent.size > (if (liked.isNotEmpty()) 7 else 8)) {
+            if (recentShown.size > (if (liked.isNotEmpty()) 7 else 8)) {
                 item(key = "tiles_more") {
                     Text(
-                        text = if (showAllTiles) "Mostrar menos" else "Mostrar mais (${recent.size})",
+                        text = if (showAllTiles) "Mostrar menos" else "Mostrar mais (${recentShown.size})",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

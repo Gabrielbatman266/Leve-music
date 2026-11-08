@@ -37,8 +37,17 @@ import javax.inject.Inject
 data class LeveMix(
     val seed: Song,
     val songs: List<SongItem>,
+    val style: com.metrolist.music.utils.LeveStyle = com.metrolist.music.utils.LeveStyle.MUSICA,
 ) {
-    val title: String get() = "Mix " + (seed.artists.firstOrNull()?.name ?: seed.title)
+    val title: String
+        get() {
+            val who = seed.artists.firstOrNull()?.name ?: seed.title
+            return when {
+                !style.isMusic -> "Mix ${style.label}"
+                style == com.metrolist.music.utils.LeveStyle.MUSICA -> "Mix $who"
+                else -> "Mix ${style.label} · $who"
+            }
+        }
     val subtitle: String
         get() {
             val names = (seed.artists.map { it.name } + songs.flatMap { s -> s.artists.map { it.name } })
@@ -143,36 +152,68 @@ class LeveHomeViewModel @Inject constructor(
         }
     }
 
-    // Mixes: cada um começa com uma música que você já ouve e segue com parecidas (rádio do YouTube Music)
+    // Mixes inteligentes: detecta o estilo do que você ouve (ASMR, meditação, funk, rock…)
+    // e cada mix só tem coisas desse estilo. Só cria mix de um estilo que você realmente escuta.
     private suspend fun loadMixes() {
-        val seeds =
+        val listened =
             (
-                database.mostPlayedSongs(LocalDateTime.now().minusDays(30), limit = 15).first() +
-                    database.recentlyPlayedSongs(20).first()
+                database.mostPlayedSongs(LocalDateTime.now().minusDays(30), limit = 30).first() +
+                    database.recentlyPlayedSongs(40).first()
             ).filterNot { LocalMusic.isLocalId(it.id) }
                 .distinctBy { it.id }
-                .distinctBy { it.artists.firstOrNull()?.name ?: it.id }
-                .shuffled()
-                .take(5)
-        if (seeds.isEmpty()) {
+        if (listened.isEmpty()) {
             mixes.value = emptyList()
             return
         }
+        val byStyle = listened.groupBy { styleOf(it.title, it.artists.map { a -> a.name }) }
+        // Um mix por estilo (até 3 estilos), e até 2 artistas diferentes do estilo principal de música
+        val seeds = mutableListOf<Pair<Song, com.metrolist.music.utils.LeveStyle>>()
+        byStyle.entries.sortedByDescending { it.value.size }.take(4).forEach { (style, songs) ->
+            songs.distinctBy { it.artists.firstOrNull()?.name ?: it.id }
+                .shuffled()
+                .take(if (style.isMusic && seeds.none { it.second.isMusic }) 2 else 1)
+                .forEach { seeds += it to style }
+        }
         mixes.value =
             coroutineScope {
-                seeds.map { seed ->
-                    async {
-                        YouTube.next(WatchEndpoint(videoId = seed.id, playlistId = "RDAMVM${seed.id}"))
-                            .getOrNull()
-                            ?.items
-                            ?.filter { it.id != seed.id }
-                            ?.distinctBy { it.id }
-                            ?.take(30)
-                            ?.takeIf { it.size >= 5 }
-                            ?.let { LeveMix(seed, it) }
-                    }
+                seeds.take(6).map { (seed, style) ->
+                    async { runCatching { buildMix(seed, style) }.getOrNull() }
                 }.awaitAll().filterNotNull()
             }
+    }
+
+    private fun styleOf(title: String, artists: List<String>) =
+        com.metrolist.music.utils.LeveStyle.detect(title, artists)
+
+    private suspend fun buildMix(seed: Song, style: com.metrolist.music.utils.LeveStyle): LeveMix? {
+        val picked = linkedMapOf<String, SongItem>()
+        fun addAll(items: List<SongItem>?) {
+            items.orEmpty().forEach { item ->
+                if (item.id == seed.id || picked.containsKey(item.id)) return@forEach
+                val s = styleOf(item.title, item.artists.map { it.name })
+                val fits =
+                    if (style.isMusic) {
+                        // música: nada de ASMR/podcast/etc; gênero definido = só esse gênero (ou música genérica)
+                        s.isMusic && (style == com.metrolist.music.utils.LeveStyle.MUSICA || s == style || s == com.metrolist.music.utils.LeveStyle.MUSICA)
+                    } else {
+                        s == style // ASMR só com ASMR, meditação só com meditação…
+                    }
+                if (fits) picked[item.id] = item
+            }
+        }
+        if (style.isMusic) {
+            addAll(YouTube.next(WatchEndpoint(videoId = seed.id, playlistId = "RDAMVM${seed.id}")).getOrNull()?.items)
+        } else {
+            // Vídeo "normal": usa os relacionados do YouTube, filtrados pelo estilo
+            addAll(com.metrolist.music.utils.LeveYouTubeSearch.video(seed.id).getOrNull()?.related)
+        }
+        if (picked.size < 12 && style.query.isNotEmpty()) {
+            val artist = seed.artists.firstOrNull()?.name.orEmpty()
+            val q = if (style.isMusic) "${style.query} $artist" else style.query
+            addAll(com.metrolist.music.utils.LeveYouTubeSearch.search(q.trim()).getOrNull()?.items)
+        }
+        val songs = picked.values.take(30)
+        return if (songs.size >= 5) LeveMix(seed, songs, style) else null
     }
 
     // Poucas requisições: só as 3 últimas buscas, em paralelo.
