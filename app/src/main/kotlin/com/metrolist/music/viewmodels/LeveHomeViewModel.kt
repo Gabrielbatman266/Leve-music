@@ -70,7 +70,15 @@ class LeveHomeViewModel @Inject constructor(
 
     // Tudo que vem do banco local é reativo e barato (sem rede).
     val recentSongs: StateFlow<List<Song>?> =
-        database.recentlyPlayedSongs(60)
+        database.recentlyPlayedSongs(600)
+            .map { all ->
+                // Do YouTube guarda até 400; do celular até 60 (assim as do celular não empurram as online pra fora)
+                var online = 0
+                var phone = 0
+                all.filter { s ->
+                    if (LocalMusic.isLocalId(s.id)) phone++ < 60 else online++ < 400
+                }
+            }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val likedSongs = MutableStateFlow<List<Song>?>(null)
