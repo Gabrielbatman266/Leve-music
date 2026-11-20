@@ -182,6 +182,7 @@ import com.metrolist.music.ui.menu.PlayerMenu
 import com.metrolist.music.ui.screens.settings.DarkMode
 import com.metrolist.music.ui.theme.PlayerColorExtractor
 import com.metrolist.music.ui.theme.PlayerSliderColors
+import com.metrolist.music.ui.utils.rememberIsAppVisible
 import com.metrolist.music.ui.utils.ShowMediaInfo
 import com.metrolist.music.ui.utils.ShowOffsetDialog
 import com.metrolist.music.utils.dataStore
@@ -603,8 +604,10 @@ fun BottomSheetPlayer(
         mutableLongStateOf(0L)
     }
 
-    LaunchedEffect(sleepTimerEnabled) {
-        if (sleepTimerEnabled) {
+    val isAppVisible by rememberIsAppVisible()
+
+    LaunchedEffect(sleepTimerEnabled, isAppVisible) {
+        if (sleepTimerEnabled && isAppVisible) {
             while (isActive) {
                 sleepTimerTimeLeft =
                     if (playerConnection.service.sleepTimer?.pauseWhenSongEnd == true) {
@@ -748,10 +751,10 @@ fun BottomSheetPlayer(
     // Position update - only for local playback
     // When casting, we use castPosition directly to avoid sync issues
     // Use isPlaying instead of playbackState to ensure continuous updates during playback
-    LaunchedEffect(isPlaying, isCasting) {
-        if (!isCasting && isPlaying) {
+    LaunchedEffect(isPlaying, isCasting, isAppVisible) {
+        if (!isCasting && isPlaying && isAppVisible) {
             while (isActive) {
-                delay(100) // Update more frequently for smoother progress bar
+                delay(200)
                 if (sliderPosition == null) { // Only update if user isn't dragging
                     position = playerConnection.player.currentPosition
                     // Don't clobber a valid (metadata-derived) duration with 0/UNSET mid-resolve.

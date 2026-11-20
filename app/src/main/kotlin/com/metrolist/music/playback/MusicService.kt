@@ -1112,7 +1112,12 @@ class MusicService :
 
         scope.launch {
             while (isActive) {
-                delay(5_000)
+                // Discord off (default): wake rarely. On: keep presence fresh, but not while paused.
+                if (!discordRpcEnabled) {
+                    delay(30_000)
+                    continue
+                }
+                delay(if (player.isPlaying) 5_000 else 15_000)
                 Timber.tag("DiscordSvc").v("polling: periodic syncDiscordState tick")
                 syncDiscordState()
             }
@@ -1287,20 +1292,27 @@ class MusicService :
 
         // Save queue periodically to prevent queue loss from crash or force kill
         scope.launch {
+            var savedWhileIdle = false
             while (isActive) {
                 delay(60.seconds)
-                if (cachedPersistentQueue) {
+                // Paused/stopped: the queue doesn't change by itself, so one save is enough until playback resumes.
+                val playing = player.isPlaying
+                if (cachedPersistentQueue && (playing || !savedWhileIdle)) {
                     saveQueueToDisk()
                 }
+                savedWhileIdle = !playing
             }
         }
 
         scope.launch {
+            var savedWhileIdle = false
             while (isActive) {
                 delay(15.seconds)
-                if (cachedPersistentQueue) {
+                val playing = player.isPlaying
+                if (cachedPersistentQueue && (playing || !savedWhileIdle)) {
                     savePlayerStateToDisk()
                 }
+                savedWhileIdle = !playing
                 val currentMetadata = player.currentMediaItem?.metadata
                 if (currentMetadata?.isEpisode == true && player.isPlaying && player.currentPosition > 0) {
                     previousEpisodePosition = player.currentPosition
@@ -1340,12 +1352,12 @@ class MusicService :
                 )
                 .setRenderersFactory(createRenderersFactory(normalizationProcessor, eqProcessor, silenceProcessor, useAudioTrackPlaybackParams))
                 .setLoadControl(
-                    // Start playback once ~750ms is buffered (media3's default is 1000ms) so first
-                    // audio is audible a touch sooner. min/max/after-rebuffer match the media3 1.x
-                    // defaults (50s / 50s / 2000ms) so buffering and post-stall recovery are unchanged.
+                    // Start playback once ~750ms is buffered so first audio is audible sooner.
+                    // Max buffer (120s) above min (30s): the radio downloads in bigger bursts and then
+                    // stays idle longer, instead of waking every few seconds to top up a 50s buffer.
                     DefaultLoadControl
                         .Builder()
-                        .setBufferDurationsMs(50_000, 50_000, 750, 2_000)
+                        .setBufferDurationsMs(30_000, 120_000, 750, 2_000)
                         .build(),
                 )
                 .setHandleAudioBecomingNoisy(true)
@@ -4853,9 +4865,13 @@ class MusicService :
         }
         widgetUpdateJob =
             scope.launch {
+                var ticks = 0
+                var hasWidgets = widgetManager.hasProgressWidgets()
                 while (isActive) {
-                    delay(1.seconds)
-                    if (player.isPlaying) {
+                    // No widget on the home screen: re-check rarely instead of doing IPC every second.
+                    delay(if (hasWidgets) 1.seconds else 30.seconds)
+                    if (!hasWidgets || ++ticks % 30 == 0) hasWidgets = widgetManager.hasProgressWidgets()
+                    if (hasWidgets && player.isPlaying) {
                         widgetManager.updateProgress(
                             duration = if (player.duration != C.TIME_UNSET) player.duration else 0,
                             currentPosition = player.currentPosition,

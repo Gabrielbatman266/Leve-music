@@ -121,6 +121,7 @@ import com.metrolist.music.ui.component.MediaMetadataListItem
 import com.metrolist.music.ui.menu.PlayerMenu
 import com.metrolist.music.ui.menu.QueueMenu
 import com.metrolist.music.ui.menu.SelectionMediaMetadataMenu
+import com.metrolist.music.ui.utils.rememberIsAppVisible
 import com.metrolist.music.ui.utils.ShowMediaInfo
 import com.metrolist.music.utils.dataStore
 import com.metrolist.music.utils.makeTimeString
@@ -242,8 +243,10 @@ fun Queue(
     }
     var sleepTimerTimeLeft by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(sleepTimerEnabled) {
-        if (sleepTimerEnabled) {
+    val isAppVisible by rememberIsAppVisible()
+
+    LaunchedEffect(sleepTimerEnabled, isAppVisible) {
+        if (sleepTimerEnabled && isAppVisible) {
             while (isActive) {
                 sleepTimerTimeLeft =
                     if (playerConnection.service.sleepTimer?.pauseWhenSongEnd == true) {

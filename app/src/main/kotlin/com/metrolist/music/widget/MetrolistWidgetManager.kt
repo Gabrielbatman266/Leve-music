@@ -121,6 +121,12 @@ class MetrolistWidgetManager @Inject constructor(
         )
     }
 
+    fun hasProgressWidgets(): Boolean {
+        val appWidgetManager = AppWidgetManager.getInstance(context)
+        return appWidgetManager.getAppWidgetIds(ComponentName(context, MusicWidgetReceiver::class.java)).isNotEmpty() ||
+            appWidgetManager.getAppWidgetIds(ComponentName(context, PlaylistWidgetReceiver::class.java)).isNotEmpty()
+    }
+
     fun updateProgress(
         duration: Long,
         currentPosition: Long,

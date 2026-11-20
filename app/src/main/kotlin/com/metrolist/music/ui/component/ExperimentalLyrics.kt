@@ -343,7 +343,18 @@ fun ExperimentalLyrics(
         var lastPlayerPos = playerConnection.player.currentPosition
         var lastUpdateTime = System.currentTimeMillis()
         
+        var syncedWhilePaused = false
         while (isActive) {
+            // While paused and not seeking nothing moves, so skip per-frame work until playback resumes.
+            val pausedAndStill = !playerConnection.player.isPlaying &&
+                sliderPositionProvider() == null &&
+                playerConnection.player.currentPosition == lastPlayerPos
+            if (pausedAndStill && syncedWhilePaused) {
+                delay(200)
+                lastUpdateTime = System.currentTimeMillis()
+                continue
+            }
+            syncedWhilePaused = pausedAndStill
             withFrameNanos { _ -> }
             val now = System.currentTimeMillis()
             val sliderPosition = sliderPositionProvider()
