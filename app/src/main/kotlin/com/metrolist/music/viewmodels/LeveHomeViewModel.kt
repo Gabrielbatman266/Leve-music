@@ -17,6 +17,7 @@ import com.metrolist.music.models.MediaMetadata
 import com.metrolist.music.models.toMediaMetadata
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import com.metrolist.music.utils.LeveYouTubeSearch
 import com.metrolist.music.utils.LocalMusic
 import com.metrolist.innertube.models.WatchEndpoint
@@ -129,36 +130,58 @@ class LeveHomeViewModel @Inject constructor(
         val fromSearch = searchSections.value.orEmpty().flatMap { it.songs.take(5) }.map { it.toMediaMetadata() }
         return (fromMixes + fromForYou + fromSearch).distinctBy { it.id }.shuffled().take(60)
     }
+    /** Carregando algo em segundo plano (as seções aparecem sozinhas quando chegam). */
     val isRefreshing = MutableStateFlow(false)
+
+    /** Só quando VOCÊ puxa a tela pra atualizar: é o único caso que mostra a bolinha girando. */
+    val isUserRefreshing = MutableStateFlow(false)
 
     private var loaded = false
 
     fun load() {
         if (loaded) return
         loaded = true
-        refresh()
+        refresh(fromUser = false)
     }
 
-    fun refresh() {
-        if (isRefreshing.value) return
+    fun refresh() = refresh(fromUser = true)
+
+    fun refresh(fromUser: Boolean) {
+        if (isRefreshing.value) {
+            // já está carregando: puxar de novo não trava a bolinha, só some quando terminar
+            if (fromUser) isUserRefreshing.value = true
+            return
+        }
         isRefreshing.value = true
+        if (fromUser) isUserRefreshing.value = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                coroutineScope {
-                    launch { likedSongs.value = database.likedSongsByCreateDateDesc(30, 0) }
-                    launch {
-                        madeForYou.value = database.quickPicks().first()
-                            .distinctBy { it.id }
-                            .shuffled()
-                            .take(20)
+                // teto geral: internet ruim ou YouTube lento nunca deixa a home "carregando para sempre"
+                withTimeoutOrNull(REFRESH_LIMIT_MS) {
+                    coroutineScope {
+                        launch { likedSongs.value = database.likedSongsByCreateDateDesc(30, 0) }
+                        launch {
+                            madeForYou.value = database.quickPicks().first()
+                                .distinctBy { it.id }
+                                .shuffled()
+                                .take(20)
+                        }
+                        launch { loadSearchSections() }
+                        launch { loadMixes() }
                     }
-                    launch { loadSearchSections() }
-                    launch { loadMixes() }
                 }
             } finally {
+                if (searchSections.value == null) searchSections.value = emptyList()
+                if (mixes.value == null) mixes.value = emptyList()
                 isRefreshing.value = false
+                isUserRefreshing.value = false
             }
         }
+    }
+
+    private companion object {
+        const val REFRESH_LIMIT_MS = 25_000L
+        const val ITEM_LIMIT_MS = 12_000L
     }
 
     // Mixes inteligentes: detecta o estilo do que você ouve (ASMR, meditação, funk, rock…)
@@ -191,7 +214,8 @@ class LeveHomeViewModel @Inject constructor(
         mixes.value =
             coroutineScope {
                 seeds.take(6).map { (seed, style) ->
-                    async { runCatching { buildMix(seed, style) }.getOrNull() }
+                    // cada mix tem no máximo 12 s; o que demorar fica de fora desta vez
+                    async { withTimeoutOrNull(ITEM_LIMIT_MS) { runCatching { buildMix(seed, style) }.getOrNull() } }
                 }.awaitAll().filterNotNull()
             }
     }
@@ -249,23 +273,27 @@ class LeveHomeViewModel @Inject constructor(
         val sections = coroutineScope {
             queries.map { query ->
                 async {
-                    val musicSongs = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
-                        .getOrNull()
-                        ?.items
-                        ?.filterIsInstance<SongItem>()
-                        .orEmpty()
-                    // Se a busca não for de música (ou trouxer pouco), completa com vídeos do YouTube
-                    val videos =
-                        if (musicSongs.size < 6) {
-                            LeveYouTubeSearch.search(query).getOrNull()?.items.orEmpty()
-                        } else {
-                            emptyList()
-                        }
-                    val songs = (musicSongs + videos).distinctBy { it.id }.take(12)
-                    if (songs.isEmpty()) null else SearchBasedSection(query, songs)
+                    withTimeoutOrNull(ITEM_LIMIT_MS) { searchSection(query) }
                 }
             }.awaitAll().filterNotNull()
         }
         searchSections.value = sections
+    }
+
+    private suspend fun searchSection(query: String): SearchBasedSection? {
+        val musicSongs = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
+            .getOrNull()
+            ?.items
+            ?.filterIsInstance<SongItem>()
+            .orEmpty()
+        // Se a busca não for de música (ou trouxer pouco), completa com vídeos do YouTube
+        val videos =
+            if (musicSongs.size < 6) {
+                LeveYouTubeSearch.search(query).getOrNull()?.items.orEmpty()
+            } else {
+                emptyList()
+            }
+        val songs = (musicSongs + videos).distinctBy { it.id }.take(12)
+        return if (songs.isEmpty()) null else SearchBasedSection(query, songs)
     }
 }

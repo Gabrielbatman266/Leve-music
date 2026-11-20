@@ -193,7 +193,8 @@ fun LeveHomeScreen(
                 }.onFailure { updateStatus = "Sem conexão com o GitHub agora" }
         }
     }
-    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    // a bolinha só aparece quando você puxa a tela (o carregamento automático é silencioso)
+    val isRefreshing by viewModel.isUserRefreshing.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -317,7 +318,7 @@ fun LeveHomeScreen(
     val themeOption = com.metrolist.music.utils.leveThemeFor(themeKey)
     PullToRefreshBox(
         isRefreshing = isRefreshing,
-        onRefresh = viewModel::refresh,
+        onRefresh = { viewModel.refresh() },
         modifier = Modifier.fillMaxSize(),
     ) {
         if (themeOption.animated) {
