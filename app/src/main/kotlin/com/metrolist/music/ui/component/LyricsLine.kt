@@ -5,6 +5,7 @@
 
 package com.metrolist.music.ui.component
 
+import kotlinx.coroutines.delay
 import android.graphics.BlurMaskFilter
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -351,6 +352,13 @@ private fun WordLevelLyrics(
             var lastPlayerPos = playerConnection.player.currentPosition
             var lastUpdateTime = System.currentTimeMillis()
             while (isActive) {
+                if (!playerConnection.player.isPlaying) {
+                    lastPlayerPos = playerConnection.player.currentPosition
+                    lastUpdateTime = System.currentTimeMillis()
+                    smoothPosition = lastPlayerPos + lyricsOffset
+                    delay(200)
+                    continue
+                }
                 withFrameMillis {
                     val now = System.currentTimeMillis()
                     val playerPos = playerConnection.player.currentPosition

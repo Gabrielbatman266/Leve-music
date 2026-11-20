@@ -5,6 +5,7 @@
 
 package com.metrolist.music.ui.component
 
+import androidx.compose.runtime.withFrameMillis
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
@@ -559,12 +560,24 @@ fun OriginalLyrics(
             currentLineIndex = -1
             return@LaunchedEffect
         }
+        var lastPosition = -1L
+        var syncedWhilePaused = false
         while (isActive) {
-            delay(8) // Faster update for word-by-word animation
+            val pausedAndStill = !playerConnection.player.isPlaying &&
+                sliderPositionProvider() == null &&
+                playerConnection.player.currentPosition == lastPosition
+            if (pausedAndStill && syncedWhilePaused) {
+                delay(200)
+                continue
+            }
+            syncedWhilePaused = pausedAndStill
+            // Frame-synced instead of a fixed 8ms delay: same smoothness, and it stops when the screen is off.
+            withFrameMillis { }
             val sliderPosition = sliderPositionProvider()
             isSeeking = sliderPosition != null
             val position = sliderPosition ?: playerConnection.player.currentPosition
             currentPlaybackPosition = position
+            lastPosition = position
             val lyricsOffset = currentSong?.song?.lyricsOffset ?: 0
             currentLineIndex = findCurrentLineIndex(lines, position + lyricsOffset)
         }
