@@ -85,22 +85,11 @@ private val WebGreen = Color(0xFF1DB954)
 private val WebSpeedKey = floatPreferencesKey("leveWebSpeed")
 private val WebSponsorKey = booleanPreferencesKey("leveWebSponsorBlock")
 
-/** Hosts/caminhos de anúncio e rastreio bloqueados direto na rede. */
-private val blockedHosts =
-    listOf(
-        "doubleclick.net", "googlesyndication.com", "googleadservices.com", "google-analytics.com",
-        "googletagservices.com", "adservice.google.", "imasdk.googleapis.com", "pagead2.", "ads.youtube.com",
-    )
-private val blockedPaths =
-    listOf("/pagead/", "/api/stats/ads", "/api/stats/atr", "/get_midroll_", "/ptracking", "/ad_data_204", "/generate_204?ad", "/youtubei/v1/log_event")
-
-private fun isBlocked(url: String): Boolean {
-    val u = url.lowercase()
-    return blockedHosts.any { u.contains(it) } || blockedPaths.any { u.contains(it) }
-}
+/** Anúncio e rastreio bloqueados direto na rede (só pelo site/caminho, nunca pelo texto da busca). */
+private fun isBlocked(url: String): Boolean = com.metrolist.music.utils.LeveYouTubeLinks.isAdUrl(url)
 
 /** Roda antes do site: tira anúncios das respostas do YouTube e finge que a página está sempre visível. */
-private val documentStartScript =
+internal val documentStartScript =
     """
     (function(){
       if (window.__leveStart) return; window.__leveStart = true;
@@ -134,7 +123,7 @@ private val documentStartScript =
     """.trimIndent()
 
 /** Roda com o site carregado: CSS de limpeza, pular anúncio, SponsorBlock, velocidade, repetir. */
-private fun pageScript(speed: Float, sponsor: Boolean, amoled: Boolean, hideShorts: Boolean, quality: String) =
+internal fun pageScript(speed: Float, sponsor: Boolean, amoled: Boolean, hideShorts: Boolean, quality: String) =
     """
     (function(){
       window.__leveSpeed = $speed; window.__leveSB = $sponsor;
@@ -231,8 +220,8 @@ private class LeveYTBridge(private val onToast: (String) -> Unit) {
     fun toast(text: String) = onToast(text)
 }
 
-private fun videoIdOf(url: String?): String? =
-    url?.let { runCatching { it.toUri().getQueryParameter("v") }.getOrNull() }
+/** Vídeo aberto agora (também em /shorts/, /live/, youtu.be/…). */
+private fun videoIdOf(url: String?): String? = com.metrolist.music.utils.LeveYouTubeLinks.videoId(url)
 
 private val WebThemeKey = androidx.datastore.preferences.core.stringPreferencesKey("leveWebTheme")
 private val WebShortsKey = booleanPreferencesKey("leveWebHideShorts")
@@ -667,7 +656,15 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
                 MenuSection("Mais") {
                     WebChip("Canal") {
                         menuOpen = false
-                        videoIdOf(webView.url)?.let { openLeveChannel(navController, scope, context, it, null) }
+                        val url = webView.url
+                        val channel = com.metrolist.music.utils.LeveYouTubeLinks.channelRef(url)
+                        val video = videoIdOf(url)
+                        when {
+                            // já está na página de um canal (@nome ou /channel/UC…): abre ele no Leve
+                            channel != null -> navController.navigate("leve_channel/${android.net.Uri.encode(channel)}")
+                            video != null -> openLeveChannel(navController, scope, context, video, null)
+                            else -> Toast.makeText(context, "Abra um vídeo ou um canal primeiro", Toast.LENGTH_SHORT).show()
+                        }
                     }
                     WebChip("Compartilhar") {
                         val url = webView.url ?: return@WebChip

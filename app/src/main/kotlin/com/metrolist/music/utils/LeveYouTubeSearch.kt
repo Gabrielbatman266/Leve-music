@@ -65,12 +65,54 @@ object LeveYouTubeSearch {
 
     suspend fun searchChannels(query: String): Result<Pair<List<com.metrolist.innertube.models.ArtistItem>, String?>> =
         runCatching {
+            if (query.isBlank()) return@runCatching emptyList<com.metrolist.innertube.models.ArtistItem>() to null
+            // "@casimiro" ou link do canal: abre o canal certo em primeiro lugar
+            val direct =
+                if (looksLikeChannelRef(query)) {
+                    resolveChannelId(query)?.let { id ->
+                        runCatching { channel(id).getOrThrow() }.getOrNull()?.let { page ->
+                            com.metrolist.innertube.models.ArtistItem(
+                                id = page.id, title = page.title, thumbnail = page.avatar,
+                                channelId = page.id, shuffleEndpoint = null, radioEndpoint = null,
+                            )
+                        }
+                    }
+                } else {
+                    null
+                }
             val root = post("search") {
-                put("query", query)
+                put("query", query.trim().take(MAX_QUERY))
                 put("params", CHANNELS_ONLY_PARAMS)
             }
-            parseChannels(root) to findContinuation(root)
+            (listOfNotNull(direct) + parseChannels(root)).distinctBy { it.id } to findContinuation(root)
         }
+
+    /** "@nome", "youtube.com/@nome", "/channel/UC…", "/c/nome", "/user/nome". */
+    fun looksLikeChannelRef(text: String): Boolean {
+        val t = text.trim()
+        if (t.startsWith("@") && t.length > 1 && !t.contains(' ')) return true
+        if (CHANNEL_ID.matches(t)) return true
+        val l = t.lowercase()
+        return ("youtube.com/" in l || "youtu.be/" in l) &&
+            ("/@" in l || "/channel/" in l || "/c/" in l || "/user/" in l)
+    }
+
+    private val CHANNEL_ID = Regex("UC[\\w-]{22}")
+    private const val MAX_QUERY = 300
+
+    /** Descobre o id UC… de um canal a partir de @nome ou link (pergunta pro próprio YouTube). */
+    suspend fun resolveChannelId(ref: String): String? {
+        val t = ref.trim()
+        CHANNEL_ID.find(t)?.let { if ("/channel/" in t || t.startsWith("UC")) return it.value }
+        val url =
+            when {
+                t.startsWith("@") -> "https://www.youtube.com/$t"
+                t.startsWith("http") -> t
+                else -> "https://$t"
+            }
+        val root = runCatching { post("navigation/resolve_url") { put("url", url) } }.getOrNull() ?: return null
+        return ((findFirst(root, "browseEndpoint") as? JsonObject)?.str("browseId"))?.takeIf { it.startsWith("UC") }
+    }
 
     suspend fun channelsContinuation(token: String): Result<Pair<List<com.metrolist.innertube.models.ArtistItem>, String?>> =
         runCatching {
@@ -78,7 +120,7 @@ object LeveYouTubeSearch {
             parseChannels(root) to findContinuation(root)
         }
 
-    private fun parseChannels(root: JsonElement): List<com.metrolist.innertube.models.ArtistItem> {
+    internal fun parseChannels(root: JsonElement): List<com.metrolist.innertube.models.ArtistItem> {
         val out = mutableListOf<com.metrolist.innertube.models.ArtistItem>()
         walk(root) { key, value ->
             val obj = value as? JsonObject
@@ -113,16 +155,34 @@ object LeveYouTubeSearch {
     private const val CLIENT_VERSION = "2.20251020.01.00"
     private const val VIDEOS_ONLY_PARAMS = "EgIQAQ=="
     private const val CHANNEL_VIDEOS_PARAMS = "EgZ2aWRlb3PyBgQKAjoA"
+    private const val CHANNEL_STREAMS_PARAMS = "EgdzdHJlYW1z8gYECgJ6AA=="
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val client by lazy { HttpClient(OkHttp) }
+
+    /** Endereço do YouTube (os testes trocam para simular internet fora do ar). */
+    @Volatile
+    internal var baseUrl = "https://www.youtube.com"
+
+    // Com tempo máximo: sem internet boa, falha em segundos em vez de ficar carregando pra sempre
+    private val client by lazy {
+        HttpClient(OkHttp) {
+            engine {
+                config {
+                    connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    callTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
+                }
+            }
+        }
+    }
 
     fun isYouTubeVideo(musicVideoType: String?): Boolean = musicVideoType == UGC_TYPE
 
     suspend fun search(query: String): Result<LeveVideoPage> =
         runCatching {
+            if (query.isBlank()) return@runCatching LeveVideoPage(emptyList(), null)
             val root = post("search") {
-                put("query", query)
+                put("query", query.trim().take(MAX_QUERY))
                 put("params", VIDEOS_ONLY_PARAMS)
             }
             LeveVideoPage(parseVideos(root), findContinuation(root))
@@ -159,27 +219,46 @@ object LeveYouTubeSearch {
             )
         }
 
-    suspend fun channel(channelId: String): Result<LeveChannelPage> =
+    suspend fun channel(channelRef: String): Result<LeveChannelPage> =
         runCatching {
-            val root = post("browse") {
+            val channelId =
+                if (channelRef.startsWith("UC")) channelRef
+                else requireNotNull(resolveChannelId(channelRef)) { "Canal não encontrado" }
+            var root = post("browse") {
                 put("browseId", channelId)
                 put("params", CHANNEL_VIDEOS_PARAMS)
             }
             val meta = findFirst(root, "channelMetadataRenderer") as? JsonObject
+                ?: error("Canal não encontrado")
+            val title = meta.str("title")
+            var videos = parseVideos(root, defaultChannel = title, defaultChannelId = channelId)
+            if (videos.isEmpty()) {
+                // canal que só faz lives (podcasts, cortes ao vivo): mostra as transmissões
+                root = runCatching {
+                    post("browse") {
+                        put("browseId", channelId)
+                        put("params", CHANNEL_STREAMS_PARAMS)
+                    }
+                }.getOrDefault(root)
+                videos = parseVideos(root, defaultChannel = title, defaultChannelId = channelId)
+            }
             LeveChannelPage(
                 id = channelId,
-                title = meta?.str("title") ?: "Canal",
-                avatar = (meta?.obj("avatar")?.get("thumbnails") as? JsonArray)?.firstOrNull()?.let { (it as? JsonObject)?.str("url") },
-                description = meta?.str("description"),
-                videos = parseVideos(root, defaultChannel = meta?.str("title"), defaultChannelId = channelId),
-                continuation = findContinuation(root),
+                title = title ?: "Canal",
+                // a maior foto (a primeira é minúscula e fica borrada no topo do canal)
+                avatar = (meta.obj("avatar")?.get("thumbnails") as? JsonArray)?.lastOrNull()?.let { (it as? JsonObject)?.str("url") },
+                description = meta.str("description"),
+                videos = videos,
+                // canal vazio: o único "continuar" que vem é o do painel "Sobre" (não traz vídeos)
+                continuation = if (videos.isEmpty()) null else findContinuation(root),
             )
         }
 
     suspend fun channelContinuation(channelId: String, channelName: String?, token: String): Result<LeveVideoPage> =
         runCatching {
             val root = post("browse") { put("continuation", token) }
-            LeveVideoPage(parseVideos(root, channelName, channelId), findContinuation(root))
+            val items = parseVideos(root, channelName, channelId)
+            LeveVideoPage(items, if (items.isEmpty()) null else findContinuation(root))
         }
 
     // ---------------- rede ----------------
@@ -198,8 +277,8 @@ object LeveYouTubeSearch {
                 }
                 extra()
             }
-        val text =
-            client.post("https://www.youtube.com/youtubei/v1/$endpoint?prettyPrint=false") {
+        val response =
+            client.post("$baseUrl/youtubei/v1/$endpoint?prettyPrint=false") {
                 contentType(ContentType.Application.Json)
                 header("X-YouTube-Client-Name", "1")
                 header("X-YouTube-Client-Version", CLIENT_VERSION)
@@ -209,8 +288,12 @@ object LeveYouTubeSearch {
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
                 )
                 setBody(body.toString())
-            }.bodyAsText()
-        return json.parseToJsonElement(text)
+            }
+        // YouTube ocupado (429) ou página de erro: vira erro de verdade ("Tentar de novo"), não lista vazia
+        check(response.status.value in 200..299) { "YouTube respondeu ${response.status.value}" }
+        val root = json.parseToJsonElement(response.bodyAsText())
+        check(root is JsonObject) { "Resposta inválida do YouTube" }
+        return root
     }
 
     // ---------------- leitura do JSON ----------------
@@ -227,7 +310,7 @@ object LeveYouTubeSearch {
         }
     }
 
-    private fun findFirst(root: JsonElement, wanted: String): JsonElement? {
+    internal fun findFirst(root: JsonElement, wanted: String): JsonElement? {
         var found: JsonElement? = null
         walk(root) { key, value ->
             if (found == null && key == wanted) {
@@ -240,10 +323,10 @@ object LeveYouTubeSearch {
         return found
     }
 
-    private fun findContinuation(root: JsonElement): String? =
+    internal fun findContinuation(root: JsonElement): String? =
         (findFirst(root, "continuationCommand") as? JsonObject)?.str("token")
 
-    private fun parseVideos(
+    internal fun parseVideos(
         root: JsonElement,
         defaultChannel: String? = null,
         defaultChannelId: String? = null,
@@ -270,9 +353,23 @@ object LeveYouTubeSearch {
         return out.distinctBy { it.id }
     }
 
+    /** É Short? Procura direto nas chaves (antes transformava cada vídeo em texto: lento). */
     private fun JsonObject.isShort(): Boolean {
-        val t = toString()
-        return "reelWatchEndpoint" in t || "\"/shorts/" in t
+        var short = false
+        fun look(e: JsonElement, depth: Int) {
+            if (short || depth > 12) return
+            when (e) {
+                is JsonObject -> for ((k, v) in e) {
+                    if (k == "reelWatchEndpoint") { short = true; return }
+                    if (k == "url" && v is JsonPrimitive && v.contentOrNull?.startsWith("/shorts/") == true) { short = true; return }
+                    look(v, depth + 1)
+                }
+                is JsonArray -> for (x in e) look(x, depth + 1)
+                else -> Unit
+            }
+        }
+        look(this, 0)
+        return short
     }
 
     private fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull

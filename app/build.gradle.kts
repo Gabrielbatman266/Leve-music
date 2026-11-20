@@ -178,6 +178,16 @@ android {
         includeInBundle = false
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all {
+                it.maxHeapSize = "3g"
+                it.systemProperty("leve.stress.out", rootProject.file("app/build/stress").absolutePath)
+            }
+        }
+    }
+
     lint {
         lintConfig = file("lint.xml")
         warningsAsErrors = false
@@ -329,4 +339,7 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.ktor.client.mock)
+    // Leve Music: testes de estresse da interface (Compose rodando no Robolectric)
+    testImplementation("androidx.compose.ui:ui-test-junit4:${libs.versions.compose.get()}")
+    debugImplementation("androidx.compose.ui:ui-test-manifest:${libs.versions.compose.get()}")
 }

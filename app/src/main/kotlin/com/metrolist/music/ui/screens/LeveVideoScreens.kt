@@ -22,6 +22,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -124,8 +126,10 @@ fun openLeveChannel(
     }
 }
 
-private fun playerHtml(videoId: String) =
-    """
+internal fun playerHtml(rawVideoId: String): String {
+    // só letras, números, - e _ (um id estranho não vira código dentro da página)
+    val videoId = rawVideoId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }.take(64)
+    return """
     <!DOCTYPE html><html><head>
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
     <style>html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;inset:0;width:100%;height:100%}</style>
@@ -150,6 +154,7 @@ private fun playerHtml(videoId: String) =
       function levePause(){ if(player) player.pauseVideo(); }
     </script></body></html>
     """.trimIndent()
+}
 
 private class LeveBridge(private val onError: (String) -> Unit) {
     @JavascriptInterface
@@ -419,6 +424,8 @@ internal fun VideoChip(label: String, highlighted: Boolean = false, onClick: () 
             .clip(RoundedCornerShape(50))
             .background(if (highlighted) VideoGreen else MaterialTheme.colorScheme.surfaceContainerHigh)
             .clickable(onClick = onClick)
+            .heightIn(min = 40.dp)
+            .wrapContentHeight(Alignment.CenterVertically)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     )
 }
@@ -472,6 +479,27 @@ internal fun VideoRow(video: SongItem, onClick: () -> Unit, onLongClick: () -> U
     }
 }
 
+/** Botões do canal: quebram linha quando não cabem (letra grande / tela pequena). */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun ChannelActions(
+    enabled: Boolean,
+    onPlayAll: () -> Unit,
+    onShuffle: () -> Unit,
+    onOpenYouTube: () -> Unit,
+) {
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (enabled) {
+            VideoChip("Ouvir tudo", highlighted = true, onClick = onPlayAll)
+            VideoChip("Aleatório", onClick = onShuffle)
+        }
+        VideoChip("Abrir no YouTube", onClick = onOpenYouTube)
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LeveChannelScreen(channelId: String) {
@@ -480,8 +508,15 @@ fun LeveChannelScreen(channelId: String) {
     val playerConnection = LocalPlayerConnection.current
     val scope = rememberCoroutineScope()
 
-    val page by produceState<com.metrolist.music.utils.LeveChannelPage?>(null, channelId) {
-        value = withContext(Dispatchers.IO) { LeveYouTubeSearch.channel(channelId).getOrNull() }
+    // null = carregando; falha vira mensagem com "Tentar de novo" (antes ficava girando para sempre)
+    var attempt by remember(channelId) { mutableStateOf(0) }
+    var failed by remember(channelId) { mutableStateOf(false) }
+    val page by produceState<com.metrolist.music.utils.LeveChannelPage?>(null, channelId, attempt) {
+        failed = false
+        value = null
+        val result = withContext(Dispatchers.IO) { LeveYouTubeSearch.channel(channelId) }
+        value = result.getOrNull()
+        failed = result.isFailure
     }
     val extraVideos = remember(channelId) { mutableStateListOf<SongItem>() }
     var continuation by remember(page) { mutableStateOf(page?.continuation) }
@@ -498,7 +533,16 @@ fun LeveChannelScreen(channelId: String) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
             ) {
-                if (p == null) {
+                if (p == null && failed) {
+                    Text("Não deu para abrir o canal", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Confira a internet e tente de novo.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    VideoChip("Tentar de novo", highlighted = true) { attempt++ }
+                } else if (p == null) {
                     CircularProgressIndicator(color = VideoGreen)
                 } else {
                     AsyncImage(
@@ -513,23 +557,22 @@ fun LeveChannelScreen(channelId: String) {
                         Text(p.description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     }
                     Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        VideoChip("Ouvir tudo", highlighted = true) {
-                            if (videos.isNotEmpty()) {
-                                playerConnection?.playQueue(ListQueue(title = p.title, items = videos.map { it.toMediaItem() }))
+                    ChannelActions(
+                        enabled = videos.isNotEmpty(),
+                        onPlayAll = { playerConnection?.playQueue(ListQueue(title = p.title, items = videos.map { it.toMediaItem() })) },
+                        onShuffle = { playerConnection?.playQueue(ListQueue(title = p.title, items = videos.shuffled().map { it.toMediaItem() })) },
+                        onOpenYouTube = {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, "https://www.youtube.com/channel/${p.id}".toUri()))
                             }
-                        }
-                        VideoChip("Aleatório") {
-                            if (videos.isNotEmpty()) {
-                                playerConnection?.playQueue(ListQueue(title = p.title, items = videos.shuffled().map { it.toMediaItem() }))
-                            }
-                        }
-                        VideoChip("Abrir no YouTube") {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, "https://www.youtube.com/channel/$channelId".toUri()))
-                        }
-                    }
+                        },
+                    )
                     Spacer(Modifier.height(8.dp))
-                    Text("Toque pra assistir · segure pra ouvir só o áudio", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (videos.isEmpty()) {
+                        Text("Esse canal ainda não tem vídeos públicos.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Text("Toque pra assistir · segure pra ouvir só o áudio", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }

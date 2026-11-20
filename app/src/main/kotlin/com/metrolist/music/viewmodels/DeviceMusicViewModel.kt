@@ -40,45 +40,64 @@ enum class DeviceTab(val label: String) {
 data class DeviceGroup(
     val name: String,
     val songs: List<LocalSong>,
+    /** Identidade do grupo (dois álbuns "Greatest Hits" de artistas diferentes têm chaves diferentes). */
+    val key: String = name,
+    val subtitle: String? = null,
 ) {
     val artworkUri: String? get() = songs.firstOrNull()?.artworkUri
     val totalMs: Long get() = songs.sumOf { it.durationMs }
 }
 
+// Desempate sempre pelo id: a mesma lista sai sempre na mesma ordem
+private val byTitle = compareBy<LocalSong>({ it.titleKey }, { it.mediaStoreId })
+private val inAlbum = compareBy<LocalSong>({ it.trackRaw == 0 }, { it.trackRaw }, { it.titleKey }, { it.mediaStoreId })
+
 fun List<LocalSong>.sortedForDevice(sort: DeviceSort): List<LocalSong> =
     when (sort) {
-        DeviceSort.A_Z -> sortedBy { it.titleKey }
-        DeviceSort.Z_A -> sortedByDescending { it.titleKey }
-        DeviceSort.NEWEST -> sortedByDescending { it.dateAddedSec }
-        DeviceSort.OLDEST -> sortedBy { it.dateAddedSec }
-        DeviceSort.ARTIST -> sortedWith(compareBy<LocalSong>({ it.artistKey }, { it.albumKey }, { it.track }, { it.titleKey }))
-        DeviceSort.ALBUM -> sortedWith(compareBy<LocalSong>({ it.albumKey }, { it.track }, { it.titleKey }))
-        DeviceSort.YEAR -> sortedWith(compareByDescending<LocalSong> { it.year }.thenBy { it.titleKey })
-        DeviceSort.LONGEST -> sortedByDescending { it.durationMs }
-        DeviceSort.SHORTEST -> sortedBy { it.durationMs }
-        DeviceSort.BIGGEST -> sortedByDescending { it.sizeBytes }
+        DeviceSort.A_Z -> sortedWith(byTitle)
+        DeviceSort.Z_A -> sortedWith(byTitle.reversed())
+        DeviceSort.NEWEST -> sortedWith(compareByDescending<LocalSong> { it.dateAddedSec }.then(byTitle))
+        DeviceSort.OLDEST -> sortedWith(compareBy<LocalSong> { it.dateAddedSec }.then(byTitle))
+        DeviceSort.ARTIST -> sortedWith(compareBy<LocalSong>({ it.artistKey }, { it.albumKey }, { it.albumId }).then(inAlbum))
+        DeviceSort.ALBUM -> sortedWith(compareBy<LocalSong>({ it.albumKey }, { it.albumId }).then(inAlbum))
+        // sem ano (0) vai pro fim
+        DeviceSort.YEAR -> sortedWith(compareBy<LocalSong>({ it.year == 0 }, { -it.year }).then(byTitle))
+        DeviceSort.LONGEST -> sortedWith(compareByDescending<LocalSong> { it.durationMs }.then(byTitle))
+        DeviceSort.SHORTEST -> sortedWith(compareBy<LocalSong> { it.durationMs }.then(byTitle))
+        DeviceSort.BIGGEST -> sortedWith(compareByDescending<LocalSong> { it.sizeBytes }.then(byTitle))
     }
 
+/** Nome que mais aparece no grupo ("Anitta" ganha de "ANITTA" e "anitta "). */
+private fun List<LocalSong>.commonName(pick: (LocalSong) -> String): String =
+    groupingBy { pick(it).trim() }.eachCount().maxWithOrNull(compareBy<Map.Entry<String, Int>> { it.value }.thenBy { it.key })?.key ?: ""
+
 fun List<LocalSong>.groupedBy(tab: DeviceTab): List<DeviceGroup> {
-    val key: (LocalSong) -> String =
+    if (tab == DeviceTab.SONGS || tab == DeviceTab.AUDIOS) return emptyList()
+    val groups =
         when (tab) {
-            DeviceTab.ARTISTS -> { s -> s.artist }
-            DeviceTab.ALBUMS -> { s -> s.album }
-            DeviceTab.FOLDERS -> { s -> s.folder }
-            DeviceTab.SONGS, DeviceTab.AUDIOS -> { _ -> "" }
+            // Artista: ignora maiúscula, acento e espaço sobrando
+            DeviceTab.ARTISTS ->
+                groupBy { it.artistKey }.map { (k, songs) ->
+                    DeviceGroup(songs.commonName { it.artist }, songs.sortedWith(byTitle), key = "ar:$k")
+                }
+            // Álbum: pelo id do álbum (mesmo nome de artistas diferentes não se misturam)
+            DeviceTab.ALBUMS ->
+                groupBy { if (it.albumId != 0L) "id:${it.albumId}" else "n:${it.albumKey}|${it.artistKey}" }.map { (k, songs) ->
+                    DeviceGroup(songs.commonName { it.album }, songs.sortedWith(inAlbum), key = "al:$k", subtitle = songs.commonName { it.artist })
+                }
+            // Pasta: pelo caminho completo; nomes repetidos ganham a pasta de cima entre parênteses
+            else -> {
+                val byPath = groupBy { it.folderPath }
+                val nameCount = byPath.values.groupingBy { it.first().folder.lowercase() }.eachCount()
+                byPath.map { (path, songs) ->
+                    val name = songs.first().folder
+                    val parent = path.substringBeforeLast('/', "").substringAfterLast('/')
+                    val shown = if ((nameCount[name.lowercase()] ?: 0) > 1 && parent.isNotEmpty()) "$name ($parent)" else name
+                    DeviceGroup(shown, songs.sortedWith(byTitle), key = "pa:$path")
+                }
+            }
         }
-    return groupBy(key)
-        .map { (name, songs) ->
-            DeviceGroup(
-                name = name,
-                songs =
-                    if (tab == DeviceTab.ALBUMS) {
-                        songs.sortedWith(compareBy<LocalSong>({ it.track }, { it.titleKey }))
-                    } else {
-                        songs.sortedBy { it.titleKey }
-                    },
-            )
-        }.sortedBy { it.name.lowercase() }
+    return groups.sortedWith(compareBy<DeviceGroup>({ LocalMusic.norm(it.name) }, { it.subtitle.orEmpty() }, { it.key }))
 }
 
 @HiltViewModel

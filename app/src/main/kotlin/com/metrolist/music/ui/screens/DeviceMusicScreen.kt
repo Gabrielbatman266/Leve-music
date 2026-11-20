@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -176,7 +178,7 @@ fun DeviceMusicScreen(
     // Músicas de verdade x áudios do dia a dia (WhatsApp, gravações, toques)
     val filtered =
         remember(allSongs, query, tab, audioKind) {
-            val q = query.trim().lowercase()
+            val q = com.metrolist.music.utils.LocalMusic.norm(query)
             val base =
                 allSongs.orEmpty().filter { song ->
                     if (tab == DeviceTab.AUDIOS) {
@@ -191,7 +193,7 @@ fun DeviceMusicScreen(
         remember(filtered, tab) {
             if (tab == DeviceTab.SONGS || tab == DeviceTab.AUDIOS) emptyList() else filtered.groupedBy(tab)
         }
-    val selectedGroup: DeviceGroup? = openGroup?.let { name -> groups.firstOrNull { it.name == name } }
+    val selectedGroup: DeviceGroup? = openGroup?.let { key -> groups.firstOrNull { it.key == key } }
     val visibleSongs: List<LocalSong> =
         remember(filtered, sort, tab, selectedGroup) {
             when {
@@ -509,7 +511,7 @@ fun DeviceMusicScreen(
                     GroupRow(
                         group = group,
                         round = tab == DeviceTab.ARTISTS,
-                        onClick = { openGroup = group.name },
+                        onClick = { openGroup = group.key },
                         onLongClick = { shuffle(group.songs, group.name) },
                     )
                 }
@@ -548,7 +550,7 @@ private fun Artwork(uri: String?, round: Boolean, size: Int) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LocalSongRow(
+internal fun LocalSongRow(
     song: LocalSong,
     active: Boolean,
     showTrack: Boolean,
@@ -566,8 +568,10 @@ private fun LocalSongRow(
             Text(
                 text = if (song.track > 0) song.track.toString() else "–",
                 fontSize = 13.sp,
+                maxLines = 1,
+                softWrap = false,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(28.dp),
+                modifier = Modifier.widthIn(min = 28.dp).padding(end = 6.dp),
             )
         } else {
             Artwork(uri = song.artworkUri, round = false, size = 48)
@@ -591,13 +595,13 @@ private fun LocalSongRow(
             )
         }
         Spacer(Modifier.width(8.dp))
-        Text(formatDuration(song.durationMs), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(formatDuration(song.durationMs), fontSize = 12.sp, maxLines = 1, softWrap = false, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun GroupRow(
+internal fun GroupRow(
     group: DeviceGroup,
     round: Boolean,
     onClick: () -> Unit,
@@ -615,7 +619,7 @@ private fun GroupRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(group.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                "${group.songs.size} músicas · ${formatTotal(group.totalMs)}",
+                listOfNotNull(group.subtitle, "${group.songs.size} músicas", formatTotal(group.totalMs)).joinToString(" · "),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

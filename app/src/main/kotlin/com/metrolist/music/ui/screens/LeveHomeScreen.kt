@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -113,20 +115,7 @@ private enum class HomeCategory(val label: String, val keywords: List<String>) {
     ELETRONICA("Eletrônica", listOf("remix", "house", "techno", "edm", "phonk", "slowed", "sped up", "eletrônica")),
 }
 
-private val NonMusicCategories = listOf(HomeCategory.ASMR, HomeCategory.SLEEP, HomeCategory.PODCAST, HomeCategory.GAMES)
-
-private fun textMatches(text: String, keyword: String): Boolean {
-    if (keyword.contains(' ')) return text.contains(keyword)
-    // palavra que começa com a chave (evita "rap" casar com "terapia")
-    return text.split(Regex("[^\\p{L}\\p{N}]+")).any { it.startsWith(keyword) }
-}
-
-private fun HomeCategory.accepts(text: String): Boolean =
-    when (this) {
-        HomeCategory.ALL -> true
-        HomeCategory.MUSIC -> NonMusicCategories.none { cat -> cat.keywords.any { textMatches(text, it) } }
-        else -> keywords.any { textMatches(text, it) }
-    }
+private fun HomeCategory.accepts(text: String): Boolean = com.metrolist.music.utils.LeveStyle.homeAccepts(name, text)
 
 /** Abas do histórico do topo. */
 private enum class RecentTab(val label: String) {
@@ -261,7 +250,7 @@ fun LeveHomeScreen(
         hiddenRaw = hiddenTopics.filterNot { it == topic }.joinToString("\n")
     }
 
-    fun isHidden(text: String) = hiddenTopics.any { text.contains(it) }
+    fun isHidden(text: String) = hiddenTopics.any { com.metrolist.music.utils.LeveStyle.containsTopic(text, it) }
     fun keep(text: String) = !isHidden(text) && category.accepts(text)
 
     val recent = recentSongs.orEmpty().filter { keep(it.searchText()) }
@@ -719,7 +708,7 @@ fun LeveHomeScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun QuickTile(
+internal fun QuickTile(
     title: String,
     thumbnail: String?,
     isLikedTile: Boolean,
@@ -731,7 +720,8 @@ private fun QuickTile(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            // cresce com a letra grande (antes o título era cortado ao meio na fonte "Enorme")
+            .heightIn(min = 56.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
