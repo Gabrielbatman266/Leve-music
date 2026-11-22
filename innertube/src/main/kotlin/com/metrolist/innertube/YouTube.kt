@@ -163,7 +163,31 @@ object YouTube {
         }
 
     // Background metadata resolution must never write to account search history.
+    // Leve: se a busca com a conta logada falhar (cookie vencido, resposta diferente), tenta de novo sem login.
+    private suspend fun <T> searchWithLoginFallback(recordSearchHistory: Boolean, block: suspend (Boolean) -> Result<T>): Result<T> {
+        val first = block(recordSearchHistory)
+        if (first.isSuccess || !recordSearchHistory) return first
+        first.exceptionOrNull()?.let { if (it is kotlinx.coroutines.CancellationException) return first }
+        return block(false).takeIf { it.isSuccess } ?: first
+    }
+
     suspend fun searchSummary(
+        query: String,
+        recordSearchHistory: Boolean = false,
+    ): Result<SearchSummaryPage> = searchWithLoginFallback(recordSearchHistory) { searchSummaryOnce(query, it) }
+
+    suspend fun search(
+        query: String,
+        filter: SearchFilter,
+        recordSearchHistory: Boolean = false,
+    ): Result<SearchResult> = searchWithLoginFallback(recordSearchHistory) { searchOnce(query, filter, it) }
+
+    suspend fun searchContinuation(
+        continuation: String,
+        recordSearchHistory: Boolean = false,
+    ): Result<SearchResult> = searchWithLoginFallback(recordSearchHistory) { searchContinuationOnce(continuation, it) }
+
+    private suspend fun searchSummaryOnce(
         query: String,
         recordSearchHistory: Boolean = false,
     ): Result<SearchSummaryPage> =
@@ -313,7 +337,7 @@ object YouTube {
         }
     }
 
-    suspend fun search(
+    private suspend fun searchOnce(
         query: String,
         filter: SearchFilter,
         recordSearchHistory: Boolean = false,
@@ -355,7 +379,7 @@ object YouTube {
             )
         }
 
-    suspend fun searchContinuation(
+    private suspend fun searchContinuationOnce(
         continuation: String,
         recordSearchHistory: Boolean = false,
     ): Result<SearchResult> =
