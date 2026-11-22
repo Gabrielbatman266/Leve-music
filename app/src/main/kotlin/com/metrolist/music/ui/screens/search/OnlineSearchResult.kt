@@ -580,7 +580,29 @@ fun OnlineSearchResult(
                         }
                     }
 
-                    if (searchFilter == null && searchSummary == null || searchFilter != null && itemsPage == null) {
+                    val failed = viewModel.errorKeys[searchFilter?.value ?: OnlineSearchViewModel.SUMMARY_KEY] == true
+                    if (failed && (searchFilter == null && searchSummary == null || searchFilter != null && itemsPage == null)) {
+                        item(key = "search_error") {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            ) {
+                                Text(
+                                    "Não deu para carregar",
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    "O YouTube demorou ou a internet caiu.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                                )
+                                androidx.compose.material3.FilledTonalButton(onClick = { viewModel.retry() }) {
+                                    Text("Tentar de novo")
+                                }
+                            }
+                        }
+                    } else if (searchFilter == null && searchSummary == null || searchFilter != null && itemsPage == null) {
                         item {
                             ShimmerHost {
                                 repeat(8) {
