@@ -580,7 +580,8 @@ fun OnlineSearchResult(
                         }
                     }
 
-                    val failed = viewModel.errorKeys[searchFilter?.value ?: OnlineSearchViewModel.SUMMARY_KEY] == true
+                    val errorDetail = viewModel.errorKeys[searchFilter?.value ?: OnlineSearchViewModel.SUMMARY_KEY]
+                    val failed = errorDetail != null
                     if (failed && (searchFilter == null && searchSummary == null || searchFilter != null && itemsPage == null)) {
                         item(key = "search_error") {
                             Column(
@@ -600,6 +601,12 @@ fun OnlineSearchResult(
                                 androidx.compose.material3.FilledTonalButton(onClick = { viewModel.retry() }) {
                                     Text("Tentar de novo")
                                 }
+                                Text(
+                                    "Detalhe: " + errorDetail.orEmpty(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.padding(top = 16.dp),
+                                )
                             }
                         }
                     } else if (searchFilter == null && searchSummary == null || searchFilter != null && itemsPage == null) {

@@ -233,6 +233,18 @@ object LeveYouTubeSearch {
             val title = meta.str("title")
             var videos = parseVideos(root, defaultChannel = title, defaultChannelId = channelId)
             if (videos.isEmpty()) {
+                // canais grandes às vezes mandam a aba Vídeos vazia com só um "continuar": segue ele uma vez
+                findContinuation(root)?.let { token ->
+                    runCatching { post("browse") { put("continuation", token) } }.getOrNull()?.let { next ->
+                        val more = parseVideos(next, defaultChannel = title, defaultChannelId = channelId)
+                        if (more.isNotEmpty()) {
+                            videos = more
+                            root = next
+                        }
+                    }
+                }
+            }
+            if (videos.isEmpty()) {
                 // canal que só faz lives (podcasts, cortes ao vivo): mostra as transmissões
                 root = runCatching {
                     post("browse") {

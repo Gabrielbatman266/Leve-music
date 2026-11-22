@@ -92,7 +92,13 @@ constructor(
         }
 
     /** Filtros (ou SUMMARY_KEY) cuja busca falhou: a tela mostra "Tentar de novo" em vez de carregar para sempre. */
-    val errorKeys = mutableStateMapOf<String, Boolean>()
+    val errorKeys = mutableStateMapOf<String, String>()
+    @Volatile private var lastError: Throwable? = null
+
+    private fun noteError(t: Throwable) {
+        lastError = t
+        reportException(t)
+    }
     private var loadJob: Job? = null
 
     private val hideExplicit get() = context.dataStore.get(HideExplicitKey, false)
@@ -114,7 +120,7 @@ constructor(
 
     private suspend fun <T> withNetTimeout(block: suspend () -> Result<T>): Result<T> =
         withTimeoutOrNull(REQUEST_TIMEOUT_MS) { block() }
-            ?: Result.failure(java.io.IOException("Tempo esgotado ao buscar"))
+            ?: Result.failure(java.io.IOException("tempo esgotado (${REQUEST_TIMEOUT_MS / 1000}s)"))
 
     private suspend fun loadSummaryPage(): Boolean {
         if (summaryPage != null) return true
@@ -122,7 +128,7 @@ constructor(
             YouTube.searchSummary(query, recordSearchHistory = recordHistory)
         }
         val page = result.getOrElse {
-            reportException(it)
+            noteError(it)
             return false
         }
         // Mostra já; depois troca pela versão enriquecida.
@@ -149,7 +155,7 @@ constructor(
         val key = filter.value
         val result = withNetTimeout { YouTube.search(query, filter, recordSearchHistory = recordHistory) }
         var page = result.getOrElse {
-            reportException(it)
+            noteError(it)
             null
         }
         if (filter == YouTube.SearchFilter.FILTER_SONG && page?.items.isNullOrEmpty()) {
@@ -177,6 +183,7 @@ constructor(
     private suspend fun load(filter: YouTube.SearchFilter?) {
         val key = filter?.value ?: SUMMARY_KEY
         errorKeys.remove(key)
+        lastError = null
         val ok =
             when {
                 filter == null -> loadSummaryPage()
@@ -184,12 +191,12 @@ constructor(
                 filter == LeveYouTubeSearch.FILTER_YT_CHANNELS ->
                     withNetTimeout { LeveYouTubeSearch.searchChannels(query) }
                         .onSuccess { (items, token) -> viewStateMap[filter.value] = ItemsPage(items, token) }
-                        .onFailure { reportException(it) }
+                        .onFailure { noteError(it) }
                         .isSuccess
                 filter == LeveYouTubeSearch.FILTER_ALL_YOUTUBE ->
                     withNetTimeout { LeveYouTubeSearch.search(query) }
                         .onSuccess { page -> viewStateMap[filter.value] = ItemsPage(page.items, page.continuation) }
-                        .onFailure { reportException(it) }
+                        .onFailure { noteError(it) }
                         .isSuccess
                 filter == YouTube.SearchFilter.FILTER_EPISODE -> {
                     // A API de episódios devolve outro formato; reaproveita a seção "Episodes" do resumo.
@@ -202,7 +209,10 @@ constructor(
                 }
                 else -> loadFiltered(filter)
             }
-        if (!ok) errorKeys[key] = true
+        if (!ok) {
+            val e = lastError
+            errorKeys[key] = e?.let { (it::class.simpleName ?: "Erro") + ": " + (it.message ?: "").take(140) } ?: "sem resposta"
+        }
     }
 
     /** Botão "Tentar de novo". */
