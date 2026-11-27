@@ -824,7 +824,8 @@ class MainActivity : FragmentActivity() {
                     remember(currentRoute, navigationItemRoutes) {
                         currentRoute == null ||
                             navigationItemRoutes.contains(currentRoute) ||
-                            currentRoute!!.startsWith("search/")
+                            currentRoute!!.startsWith("search/") ||
+                            currentRoute!!.startsWith("leve_video")
                     }
 
                 val isLandscape = configuration.containerDpSize.width > configuration.containerDpSize.height

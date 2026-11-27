@@ -479,7 +479,15 @@ fun LeveYouTubeWebScreen(startVideoId: String?) {
         }
     }
 
-    BackHandler(enabled = menuOpen || fullscreenView != null || webView.canGoBack()) {
+    // Vídeo aberto pelo Leve: voltar já retorna pro Leve. Na aba YouTube: volta páginas até a inicial e depois sai.
+    val openedFromLeve = startVideoId != null
+    val onYouTubeHome =
+        remember(currentUrl) {
+            val path = currentUrl?.let { runCatching { android.net.Uri.parse(it).path }.getOrNull() }.orEmpty()
+            path.isEmpty() || path == "/"
+        }
+    val webBack = !openedFromLeve && !onYouTubeHome && webView.canGoBack()
+    BackHandler(enabled = menuOpen || fullscreenView != null || webBack) {
         when {
             menuOpen -> menuOpen = false
             fullscreenView != null -> {

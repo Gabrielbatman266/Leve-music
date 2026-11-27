@@ -73,6 +73,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.metrolist.music.LocalPlayerAwareWindowInsets
+import com.metrolist.music.LocalNavController
 import com.metrolist.music.LocalPlayerConnection
 import com.metrolist.music.R
 import com.metrolist.music.extensions.toMediaItem
@@ -114,6 +115,8 @@ fun DeviceMusicScreen(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val allSongs by viewModel.songs.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val downloadedCount by viewModel.downloadedCount.collectAsStateWithLifecycle()
+    val navController = LocalNavController.current
 
     var hasPermission by remember {
         mutableStateOf(
@@ -306,6 +309,39 @@ fun DeviceMusicScreen(
                         onCheckedChange = { saveDownloads = it },
                         colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary, checkedThumbColor = MaterialTheme.colorScheme.onPrimary),
                     )
+                }
+            }
+
+            // Atalho pras músicas baixadas no app (ficam no cache do Leve, não como arquivo)
+            if (downloadedCount > 0) {
+                item(key = "leve_downloads") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .clickable { navController.navigate("auto_playlist/downloaded") }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                    ) {
+                        Text("↓", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Baixadas no Leve ($downloadedCount)",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                            Text(
+                                "Toque pra ouvir sem internet",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                            )
+                        }
+                        Text("›", fontSize = 22.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
                 }
             }
 
