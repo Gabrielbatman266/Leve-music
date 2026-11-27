@@ -110,6 +110,7 @@ object LocalMusic {
     internal fun classify(path: String, isMusic: Boolean, durationMs: Long): AudioKind {
         val dirs = path.lowercase().substringBeforeLast('/', "").split('/').filter { it.isNotEmpty() }
         return when {
+            dirs.any { it == DeviceExport.FOLDER.lowercase() } -> AudioKind.MUSIC
             dirs.any { "whatsapp" in it } -> AudioKind.WHATSAPP
             dirs.any { it in recordingDirs || it.startsWith("call record") || it.startsWith("callrec") } -> AudioKind.RECORDING
             dirs.any { it in otherDirs } -> AudioKind.OTHER
@@ -137,7 +138,10 @@ object LocalMusic {
                 MediaStore.Audio.Media.IS_MUSIC,
             )
         // Lê todo áudio com mais de 1s e separa depois: músicas x WhatsApp x gravações x toques
-        val selection = "${MediaStore.Audio.Media.DURATION} >= 1000"
+        // Downloads do Leve entram mesmo se o celular ainda não leu a duração do arquivo
+        val selection =
+            "${MediaStore.Audio.Media.DURATION} >= 1000 OR " +
+                "${MediaStore.Audio.Media.DATA} LIKE '%/${DeviceExport.FOLDER}/%'"
         val result = ArrayList<LocalSong>()
         context.contentResolver.query(
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,

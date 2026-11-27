@@ -7,12 +7,22 @@ package com.metrolist.music.viewmodels
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
+import com.metrolist.music.db.MusicDatabase
 import com.metrolist.music.utils.LocalMusic
 import com.metrolist.music.utils.LocalSong
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -103,9 +113,42 @@ fun List<LocalSong>.groupedBy(tab: DeviceTab): List<DeviceGroup> {
 @HiltViewModel
 class DeviceMusicViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
+    database: MusicDatabase,
 ) : ViewModel() {
     val songs = MutableStateFlow<List<LocalSong>?>(null)
     val isLoading = MutableStateFlow(false)
+
+    /** Músicas baixadas dentro do app (tocam offline mesmo sem cópia no celular). */
+    val downloadedCount =
+        database.downloadedSongsByCreateDateAsc()
+            .map { it.size }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    private var reloadJob: Job? = null
+
+    // Arquivo novo no celular (ex.: download salvo em Music/Leve Music) atualiza a lista sozinho
+    private val observer =
+        object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                if (songs.value == null) return
+                reloadJob?.cancel()
+                reloadJob =
+                    viewModelScope.launch {
+                        delay(1500)
+                        load(force = true)
+                    }
+            }
+        }
+
+    init {
+        runCatching {
+            context.contentResolver.registerContentObserver(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, true, observer)
+        }
+    }
+
+    override fun onCleared() {
+        runCatching { context.contentResolver.unregisterContentObserver(observer) }
+    }
 
     fun load(force: Boolean = false) {
         if (isLoading.value || (!force && songs.value != null)) return
